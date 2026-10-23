@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import sys
@@ -505,6 +506,7 @@ class DevSuiteWindow(QMainWindow):
             dialog.get_project_details()
         )
 
+        # Validate the project name.
         if not project_name:
             QMessageBox.warning(
                 self,
@@ -513,6 +515,20 @@ class DevSuiteWindow(QMainWindow):
             )
             return
 
+        if not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9_-]*",
+            project_name,
+        ):
+            QMessageBox.warning(
+                self,
+                "Invalid project name",
+                "Use letters, numbers, underscores, or hyphens. "
+                "The name must begin with a letter or number.\n\n"
+                "Example: my_awesome_project",
+            )
+            return
+
+        # Validate the destination.
         if not project_location:
             QMessageBox.warning(
                 self,
@@ -521,15 +537,168 @@ class DevSuiteWindow(QMainWindow):
             )
             return
 
-        QMessageBox.information(
+        parent_directory = Path(project_location).expanduser()
+        project_directory = parent_directory / project_name
+
+        # Check the required tools.
+        uv_executable = shutil.which("uv")
+        git_executable = shutil.which("git")
+
+        if uv_executable is None:
+            QMessageBox.critical(
+                self,
+                "uv unavailable",
+                "Could not find uv on PATH.\n"
+                "Please install uv or correct your PATH.",
+            )
+            return
+
+        if git_executable is None:
+            QMessageBox.critical(
+                self,
+                "Git unavailable",
+                "Could not find Git on PATH.\n"
+                "Please install Git before creating a project.",
+            )
+            return
+
+        # Never overwrite an existing project.
+        if project_directory.exists():
+            QMessageBox.warning(
+                self,
+                "Project already exists",
+                f"This location already exists:\n\n"
+                f"{project_directory}\n\n"
+                "Choose another project name or location.",
+            )
+            return
+
+        # Confirm the operation before creating files.
+        confirmation = QMessageBox.question(
             self,
-            "Project Details",
-            f"Project name: {project_name}\n"
-            f"Project location: {project_location}\n\n"
-            "Your details have been received. "
-            "Project creation will be added next.",
+            "Create Python Project",
+            f"Create project '{project_name}'?\n\n"
+            f"Location:\n{project_directory}\n\n"
+            "DevSuite will:\n"
+            "• Initialize a Python application with uv\n"
+            "• Create a Git repository\n"
+            "• Create a virtual environment\n"
+            "• Generate the initial project files",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
         )
 
+        if confirmation != QMessageBox.Yes:
+            return
+
+        try:
+            # Create the selected parent directory if necessary.
+            parent_directory.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            # Initialize a standalone Python application.
+            init_result = subprocess.run(
+                [
+                    uv_executable,
+                    "init",
+                    "--app",
+                    "--python",
+                    "3.14",
+                    "--vcs",
+                    "git",
+                    "--no-workspace",
+                    "--name",
+                    project_name,
+                    str(project_directory),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+
+            if init_result.returncode != 0:
+                details = (
+                    init_result.stderr.strip()
+                    or init_result.stdout.strip()
+                    or "uv returned an unknown error."
+                )
+
+                QMessageBox.critical(
+                    self,
+                    "Project initialization failed",
+                    f"uv could not initialize the project.\n\n"
+                    f"{details}\n\n"
+                    f"Check the destination:\n{project_directory}",
+                )
+                return
+
+            # Create the virtual environment and synchronize dependencies.
+            sync_result = subprocess.run(
+                [
+                    uv_executable,
+                    "sync",
+                    "--directory",
+                    str(project_directory),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+
+            if sync_result.returncode != 0:
+                details = (
+                    sync_result.stderr.strip()
+                    or sync_result.stdout.strip()
+                    or "uv sync returned an unknown error."
+                )
+
+                QMessageBox.warning(
+                    self,
+                    "Project created with a setup issue",
+                    "The project and Git repository were initialized, "
+                    "but environment setup did not complete successfully.\n\n"
+                    f"{details}\n\n"
+                    f"Project location:\n{project_directory}\n\n"
+                    "You can finish setup by running:\n"
+                    "uv sync",
+                )
+                return
+
+            QMessageBox.information(
+                self,
+                "Project created successfully! 🎉",
+                f"Your Python project is ready!\n\n"
+                f"Name: {project_name}\n\n"
+                f"Location:\n{project_directory}\n\n"
+                "Created:\n"
+                "✓ Python application structure\n"
+                "✓ pyproject.toml\n"
+                "✓ Git repository\n"
+                "✓ Virtual environment\n"
+                "✓ uv.lock\n\n"
+                "Happy coding, buddy! 🐍",
+            )
+
+        except subprocess.TimeoutExpired:
+            QMessageBox.warning(
+                self,
+                "Setup timed out",
+                "Project setup took too long and was stopped.\n\n"
+                f"Check the project directory:\n{project_directory}\n\n"
+                "If the project was partially created, inspect it "
+                "before trying again.",
+            )
+
+        except OSError as error:
+            QMessageBox.critical(
+                self,
+                "Project creation error",
+                f"An operating-system error occurred:\n\n{error}",
+            )
 
 def main():
     app = QApplication(sys.argv)
