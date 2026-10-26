@@ -3,9 +3,9 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-
 from PyQt5.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -18,6 +18,8 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QPlainTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -184,6 +186,242 @@ class NewProjectDialog(QDialog):
         )
 
 
+
+
+PACKAGE_CATALOG = {
+    "Desktop application": [
+        ("PyQt5", "Build desktop interfaces with windows, buttons, dialogs, and layouts.", "Recommended"),
+        ("psutil", "Read system and process information, such as CPU and memory usage.", "Optional"),
+        ("requests", "Make HTTP requests to web services.", "Optional"),
+        ("Pillow", "Open, resize, and process images.", "Optional"),
+    ],
+    "Web application / API": [
+        ("fastapi", "Build modern Python APIs with type hints and automatic documentation.", "Recommended"),
+        ("uvicorn", "Run an ASGI application such as FastAPI.", "Required"),
+        ("pydantic", "Validate and structure data using Python models.", "Recommended"),
+        ("httpx", "Make HTTP requests to other services.", "Optional"),
+    ],
+    "AI / machine learning": [
+        ("scikit-learn", "Train and evaluate classic machine-learning models.", "Recommended"),
+        ("numpy", "Work with numerical arrays and mathematical operations.", "Recommended"),
+        ("pandas", "Load, clean, and analyze structured datasets.", "Recommended"),
+        ("matplotlib", "Create plots and visualizations.", "Optional"),
+        ("torch", "Build and train deep-learning models. This is a large dependency.", "Optional"),
+    ],
+    "Data science": [
+        ("pandas", "Clean, transform, and analyze tabular data.", "Recommended"),
+        ("numpy", "Perform numerical calculations and array operations.", "Recommended"),
+        ("matplotlib", "Create charts and plots.", "Recommended"),
+        ("openpyxl", "Read and write Excel .xlsx files.", "Optional"),
+        ("jupyterlab", "Explore data interactively in notebooks.", "Optional"),
+    ],
+    "Web scraping": [
+        ("httpx", "Fetch web pages and call HTTP endpoints.", "Recommended"),
+        ("beautifulsoup4", "Parse HTML and extract information from pages.", "Recommended"),
+        ("lxml", "Provide a fast HTML/XML parser for supported parsing workflows.", "Optional"),
+        ("playwright", "Automate a real browser for JavaScript-heavy sites.", "Optional"),
+    ],
+    "Automation / scripting": [
+        ("psutil", "Inspect processes and system resource usage.", "Recommended"),
+        ("rich", "Display readable terminal output, tables, and progress bars.", "Recommended"),
+        ("schedule", "Run simple jobs on a recurring schedule.", "Optional"),
+        ("httpx", "Connect scripts to HTTP APIs.", "Optional"),
+    ],
+    "Game development": [
+        ("pygame", "Create 2D games with input, audio, graphics, and game loops.", "Recommended"),
+        ("numpy", "Useful for numerical and array-based game logic.", "Optional"),
+    ],
+    "Command-line tool": [
+        ("typer", "Build command-line interfaces from Python type hints.", "Recommended"),
+        ("rich", "Add formatted terminal output, tables, and progress displays.", "Recommended"),
+        ("httpx", "Make HTTP requests from your CLI.", "Optional"),
+    ],
+}
+
+IDEA_KEYWORDS = {
+    "video download": ["yt-dlp", "rich"],
+    "youtube": ["yt-dlp", "rich"],
+    "download": ["httpx", "rich"],
+    "excel": ["pandas", "openpyxl"],
+    "spreadsheet": ["pandas", "openpyxl"],
+    "image": ["Pillow"],
+    "api": ["httpx", "pydantic"],
+    "website": ["httpx", "beautifulsoup4"],
+    "browser": ["playwright"],
+    "system monitor": ["psutil", "matplotlib"],
+    "machine learning": ["scikit-learn", "pandas"],
+    "deep learning": ["torch", "numpy"],
+}
+
+EXTRA_PACKAGES = {
+    "yt-dlp": ("Download media from supported websites using yt-dlp's command-line library.", "Optional"),
+}
+
+
+class PackageAdvisorDialog(QDialog):
+    """Rule-based, offline package recommendations for a new project."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("DevSuite Package Advisor")
+        self.resize(760, 700)
+        self.setMinimumSize(650, 560)
+        self.package_checks = {}
+
+        self.setStyleSheet("""
+            QDialog, QWidget {
+                background-color: #151821;
+                color: #E6EDF3;
+                font-family: Segoe UI;
+            }
+            QLabel { color: #E6EDF3; }
+            QComboBox, QLineEdit, QPlainTextEdit {
+                background-color: #202633;
+                color: #E6EDF3;
+                border: 1px solid #303849;
+                border-radius: 6px;
+                padding: 8px;
+            }
+            QCheckBox { color: #E6EDF3; spacing: 8px; }
+            QPushButton {
+                background-color: #202633;
+                color: #E6EDF3;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 14px;
+            }
+            QPushButton:hover { background-color: #293548; color: #00E5FF; }
+            QPushButton#primary {
+                background-color: #00B8D4;
+                color: #10141C;
+                font-weight: bold;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 22, 22, 22)
+        layout.setSpacing(12)
+
+        heading = QLabel("🧠  Intelligent Package Advisor")
+        heading.setStyleSheet("font-size: 23px; font-weight: bold; color: #00E5FF;")
+        layout.addWidget(heading)
+
+        intro = QLabel(
+            "Choose a project type and describe your idea. DevSuite will suggest "
+            "packages using its built-in offline rules. You stay in control."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        form = QFormLayout()
+        self.project_type = QComboBox()
+        self.project_type.addItems(list(PACKAGE_CATALOG.keys()))
+        self.idea_input = QLineEdit()
+        self.idea_input.setPlaceholderText(
+            "e.g. Download videos, show progress, and choose quality"
+        )
+        form.addRow("What are you building?", self.project_type)
+        form.addRow("Describe your idea:", self.idea_input)
+        layout.addLayout(form)
+
+        refresh_button = QPushButton("Refresh Recommendations")
+        refresh_button.clicked.connect(self.refresh_recommendations)
+        layout.addWidget(refresh_button)
+
+        self.recommendation_summary = QLabel()
+        self.recommendation_summary.setStyleSheet("color: #00E5FF; font-weight: bold;")
+        layout.addWidget(self.recommendation_summary)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("QScrollArea { border: 1px solid #303849; border-radius: 8px; }")
+        self.recommendation_container = QWidget()
+        self.recommendation_layout = QVBoxLayout(self.recommendation_container)
+        self.recommendation_layout.setContentsMargins(12, 12, 12, 12)
+        self.recommendation_layout.setSpacing(10)
+        self.scroll_area.setWidget(self.recommendation_container)
+        layout.addWidget(self.scroll_area, 1)
+
+        note = QLabel(
+            "Required = core to the suggested setup. Recommended = useful for most projects "
+            "of this type. Optional = only install it if you need that feature."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #8B949E; font-size: 11px;")
+        layout.addWidget(note)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Cancel)
+        self.continue_button = buttons.addButton(
+            "Continue to Create Project", QDialogButtonBox.AcceptRole
+        )
+        self.continue_button.setObjectName("primary")
+        buttons.rejected.connect(self.reject)
+        self.continue_button.clicked.connect(self.accept)
+        layout.addWidget(buttons)
+
+        self.project_type.currentTextChanged.connect(self.refresh_recommendations)
+        self.idea_input.returnPressed.connect(self.refresh_recommendations)
+        self.refresh_recommendations()
+
+    def refresh_recommendations(self, *_):
+        while self.recommendation_layout.count():
+            item = self.recommendation_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.package_checks.clear()
+
+        project_type = self.project_type.currentText()
+        packages = list(PACKAGE_CATALOG[project_type])
+        idea = self.idea_input.text().lower()
+
+        # Add idea-specific suggestions, without duplicating existing packages.
+        existing = {name.lower() for name, _, _ in packages}
+        for keyword, names in IDEA_KEYWORDS.items():
+            if keyword in idea:
+                for name in names:
+                    if name.lower() not in existing:
+                        details, level = EXTRA_PACKAGES.get(
+                            name, (f"Useful for the '{keyword}' part of your idea.", "Optional")
+                        )
+                        packages.append((name, details, level))
+                        existing.add(name.lower())
+
+        self.recommendation_summary.setText(
+            f"{len(packages)} suggestions for {project_type}"
+        )
+
+        for name, description, level in packages:
+            row = QFrame()
+            row.setStyleSheet(
+                "QFrame { background-color: #202633; border: 1px solid #303849; "
+                "border-radius: 7px; }"
+            )
+            row_layout = QVBoxLayout(row)
+            row_layout.setContentsMargins(12, 9, 12, 9)
+            checkbox = QCheckBox(f"{name}   •   {level}")
+            checkbox.setStyleSheet("font-weight: bold; border: none;")
+            checkbox.setChecked(level in ("Required", "Recommended"))
+            description_label = QLabel(description)
+            description_label.setWordWrap(True)
+            description_label.setStyleSheet(
+                "color: #AAB4C3; font-size: 12px; border: none;"
+            )
+            row_layout.addWidget(checkbox)
+            row_layout.addWidget(description_label)
+            self.recommendation_layout.addWidget(row)
+            self.package_checks[name] = checkbox
+
+        self.recommendation_layout.addStretch()
+
+    def selected_packages(self):
+        return [
+            name for name, checkbox in self.package_checks.items()
+            if checkbox.isChecked()
+        ]
+
+
+
 class DevSuiteWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -193,6 +431,7 @@ class DevSuiteWindow(QMainWindow):
         self.setMinimumSize(900, 600)
 
         self.interface_density = "Comfortable"
+        self.recommended_packages = []
 
         self.setStyleSheet("""
             QMainWindow, QWidget {
@@ -308,7 +547,8 @@ class DevSuiteWindow(QMainWindow):
 
         self.add_nav_button(sidebar_layout, "▣   My Projects")
         self.add_nav_button(sidebar_layout, "⚙   Environments")
-        self.add_nav_button(sidebar_layout, "◇   Packages")
+        packages_nav = self.add_nav_button(sidebar_layout, "◇   Package Advisor")
+        packages_nav.clicked.connect(self.open_package_advisor)
 
         sidebar_layout.addStretch()
 
@@ -317,7 +557,7 @@ class DevSuiteWindow(QMainWindow):
         )
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite  •  v0.1.2")
+        version = QLabel("Trixie DevSuite  •  v0.4.0")
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
         )
@@ -383,6 +623,11 @@ class DevSuiteWindow(QMainWindow):
         new_project_button.clicked.connect(self.create_new_project)
 
         self.content_layout.addWidget(new_project_button)
+
+        advisor_button = QPushButton("🧠   Recommend Packages for My Idea")
+        advisor_button.setMinimumHeight(45)
+        advisor_button.clicked.connect(self.open_package_advisor)
+        self.content_layout.addWidget(advisor_button)
 
         terminal_button = QPushButton(">_   Open Terminal")
         terminal_button.setMinimumHeight(45)
@@ -495,6 +740,18 @@ class DevSuiteWindow(QMainWindow):
                 dialog.density_combo.currentText()
             )
             self.update_responsive_layout()
+
+    def open_package_advisor(self):
+        dialog = PackageAdvisorDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.recommended_packages = dialog.selected_packages()
+            if not self.recommended_packages:
+                QMessageBox.information(
+                    self,
+                    "No packages selected",
+                    "No dependencies were selected. You can still create a clean Python project.",
+                )
+            self.create_new_project()
 
     def create_new_project(self):
         dialog = NewProjectDialog(self)
@@ -668,6 +925,38 @@ class DevSuiteWindow(QMainWindow):
                 )
                 return
 
+            selected_packages = list(self.recommended_packages)
+            if selected_packages:
+                add_result = subprocess.run(
+                    [
+                        uv_executable,
+                        "add",
+                        "--directory",
+                        str(project_directory),
+                        *selected_packages,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                    check=False,
+                )
+                if add_result.returncode != 0:
+                    details = (
+                        add_result.stderr.strip()
+                        or add_result.stdout.strip()
+                        or "uv add returned an unknown error."
+                    )
+                    QMessageBox.warning(
+                        self,
+                        "Project created; dependency installation needs attention",
+                        "The project was created, but some selected packages could not "
+                        "be installed. You can retry from the project directory with "
+                        "'uv add package-name'.\n\n"
+                        f"{details}\n\nProject location:\n{project_directory}",
+                    )
+                    self.recommended_packages = []
+                    return
+
             QMessageBox.information(
                 self,
                 "Project created successfully! 🎉",
@@ -679,9 +968,14 @@ class DevSuiteWindow(QMainWindow):
                 "✓ pyproject.toml\n"
                 "✓ Git repository\n"
                 "✓ Virtual environment\n"
-                "✓ uv.lock\n\n"
-                "Happy coding, buddy! 🐍",
+                "✓ uv.lock\n"
+                + (
+                    "✓ Dependencies: " + ", ".join(selected_packages) + "\n\n"
+                    if selected_packages else "\n"
+                )
+                + "Happy coding, buddy! 🐍",
             )
+            self.recommended_packages = []
 
         except subprocess.TimeoutExpired:
             QMessageBox.warning(
