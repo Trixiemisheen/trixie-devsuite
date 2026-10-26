@@ -15,9 +15,12 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QScrollArea,
     QPlainTextEdit,
     QVBoxLayout,
@@ -29,7 +32,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("DevSuite Settings")
+        self.setWindowTitle("DevSuite™ Settings")
         self.setMinimumWidth(360)
 
         self.setStyleSheet("""
@@ -263,7 +266,7 @@ class PackageAdvisorDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("DevSuite Package Advisor")
+        self.setWindowTitle("DevSuite™ Package Advisor")
         self.resize(760, 700)
         self.setMinimumSize(650, 560)
         self.package_checks = {}
@@ -307,7 +310,7 @@ class PackageAdvisorDialog(QDialog):
         layout.addWidget(heading)
 
         intro = QLabel(
-            "Choose a project type and describe your idea. DevSuite will suggest "
+            "Choose a project type and describe your idea. DevSuite™ will suggest "
             "packages using its built-in offline rules. You stay in control."
         )
         intro.setWordWrap(True)
@@ -538,15 +541,18 @@ class DevSuiteWindow(QMainWindow):
         section.setObjectName("section")
         sidebar_layout.addWidget(section)
 
-        self.add_nav_button(sidebar_layout, "⌂   Dashboard")
+        dashboard_nav = self.add_nav_button(sidebar_layout, "⌂   Dashboard")
+        dashboard_nav.clicked.connect(self.show_dashboard)
 
         new_project_nav = self.add_nav_button(
             sidebar_layout, "+   New Project"
         )
         new_project_nav.clicked.connect(self.create_new_project)
 
-        self.add_nav_button(sidebar_layout, "▣   My Projects")
-        self.add_nav_button(sidebar_layout, "⚙   Environments")
+        projects_nav = self.add_nav_button(sidebar_layout, "▣   My Projects")
+        projects_nav.clicked.connect(self.show_projects)
+        environments_nav = self.add_nav_button(sidebar_layout, "⚙   Environments")
+        environments_nav.clicked.connect(self.show_environments)
         packages_nav = self.add_nav_button(sidebar_layout, "◇   Package Advisor")
         packages_nav.clicked.connect(self.open_package_advisor)
 
@@ -557,7 +563,7 @@ class DevSuiteWindow(QMainWindow):
         )
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite  •  v0.4.0")
+        version = QLabel("Trixie DevSuite™  •  v0.4.0")
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
         )
@@ -599,15 +605,14 @@ class DevSuiteWindow(QMainWindow):
         stats_layout = QHBoxLayout()
         stats_layout.setSpacing(16)
 
-        stats_layout.addWidget(
-            self.create_card("TOTAL PROJECTS", "0")
+        self.total_projects_card = self.create_card("TOTAL PROJECTS", "0")
+        self.environments_card = self.create_card("ENVIRONMENTS", "0")
+        self.python_version_card = self.create_card(
+            "PYTHON VERSION", sys.version.split()[0]
         )
-        stats_layout.addWidget(
-            self.create_card("ENVIRONMENTS", "0")
-        )
-        stats_layout.addWidget(
-            self.create_card("PYTHON VERSION", "3.14")
-        )
+        stats_layout.addWidget(self.total_projects_card)
+        stats_layout.addWidget(self.environments_card)
+        stats_layout.addWidget(self.python_version_card)
 
         self.content_layout.addLayout(stats_layout)
 
@@ -645,9 +650,315 @@ class DevSuiteWindow(QMainWindow):
         )
         self.content_layout.addWidget(footer)
 
-        self.root_layout.addWidget(content, 1)
+        self.pages = QStackedWidget()
+        self.pages.addWidget(content)
+        self.projects_page = self.build_projects_page()
+        self.environments_page = self.build_environments_page()
+        self.pages.addWidget(self.projects_page)
+        self.pages.addWidget(self.environments_page)
+        self.root_layout.addWidget(self.pages, 1)
 
+        self.refresh_workspace_views()
         self.update_responsive_layout()
+
+    def build_projects_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
+
+        heading = QLabel("My Projects")
+        heading.setObjectName("heading")
+        layout.addWidget(heading)
+
+        subtitle = QLabel(
+            "Projects discovered in your DevSuite™ folder, its parent workspace, "
+            "and your personal Projects folder."
+        )
+        subtitle.setObjectName("subtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        self.projects_list = QListWidget()
+        self.projects_list.setStyleSheet(
+            "QListWidget { background-color: #202633; border: 1px solid #303849; "
+            "border-radius: 8px; padding: 6px; }"
+            "QListWidget::item { padding: 10px; border-bottom: 1px solid #303849; }"
+            "QListWidget::item:selected { background-color: #164653; color: #FFFFFF; }"
+        )
+        layout.addWidget(self.projects_list, 1)
+
+        actions = QHBoxLayout()
+        refresh_button = QPushButton("↻  Refresh")
+        refresh_button.clicked.connect(self.refresh_workspace_views)
+        actions.addWidget(refresh_button)
+
+        open_folder_button = QPushButton("Open Folder")
+        open_folder_button.clicked.connect(self.open_selected_project_folder)
+        actions.addWidget(open_folder_button)
+
+        terminal_button = QPushButton(">_  Project Terminal")
+        terminal_button.clicked.connect(self.open_selected_project_terminal)
+        actions.addWidget(terminal_button)
+
+        run_button = QPushButton("▶  Run main.py")
+        run_button.clicked.connect(self.run_selected_project)
+        actions.addWidget(run_button)
+        layout.addLayout(actions)
+        return page
+
+    def build_environments_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
+
+        heading = QLabel("Python Environments")
+        heading.setObjectName("heading")
+        layout.addWidget(heading)
+
+        subtitle = QLabel(
+            "Virtual environments discovered in the projects DevSuite™ knows about. "
+            "DevSuite™ will inspect them without deleting or modifying them."
+        )
+        subtitle.setObjectName("subtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        self.environments_list = QListWidget()
+        self.environments_list.setStyleSheet(
+            "QListWidget { background-color: #202633; border: 1px solid #303849; "
+            "border-radius: 8px; padding: 6px; }"
+            "QListWidget::item { padding: 10px; border-bottom: 1px solid #303849; }"
+            "QListWidget::item:selected { background-color: #164653; color: #FFFFFF; }"
+        )
+        layout.addWidget(self.environments_list, 1)
+
+        actions = QHBoxLayout()
+        refresh_button = QPushButton("↻  Refresh")
+        refresh_button.clicked.connect(self.refresh_workspace_views)
+        actions.addWidget(refresh_button)
+
+        terminal_button = QPushButton(">_  Open Project Terminal")
+        terminal_button.clicked.connect(self.open_selected_environment_terminal)
+        actions.addWidget(terminal_button)
+
+        packages_button = QPushButton("Inspect Packages")
+        packages_button.clicked.connect(self.inspect_selected_environment)
+        actions.addWidget(packages_button)
+        layout.addLayout(actions)
+        return page
+
+    def discover_projects(self):
+        """Discover projects in a small set of predictable workspace folders."""
+        app_directory = Path(__file__).resolve().parent
+        roots = [
+            app_directory,
+            app_directory.parent,
+            Path.home() / "Projects",
+        ]
+        projects = {}
+        for root in roots:
+            try:
+                if not root.is_dir():
+                    continue
+                candidates = [root]
+                candidates.extend(
+                    child for child in root.iterdir()
+                    if child.is_dir() and child.name not in {
+                        ".git", ".venv", "venv", "__pycache__", "node_modules"
+                    }
+                )
+                for candidate in candidates:
+                    try:
+                        if (candidate / "pyproject.toml").is_file():
+                            projects[str(candidate.resolve()).casefold()] = candidate.resolve()
+                    except OSError:
+                        continue
+            except OSError:
+                continue
+        return sorted(projects.values(), key=lambda path: path.name.casefold())
+
+    @staticmethod
+    def environment_python(project):
+        for folder_name in (".venv", "venv"):
+            candidate = project / folder_name / "Scripts" / "python.exe"
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def refresh_workspace_views(self, *_):
+        projects = self.discover_projects()
+        self.projects_list.clear()
+        self.environments_list.clear()
+        environment_count = 0
+
+        for project in projects:
+            item = QListWidgetItem(f"{project.name}\n{project}")
+            item.setData(256, str(project))
+            self.projects_list.addItem(item)
+
+            python_executable = self.environment_python(project)
+            if python_executable:
+                environment_count += 1
+                try:
+                    result = subprocess.run(
+                        [str(python_executable), "--version"],
+                        capture_output=True, text=True, timeout=5, check=False,
+                    )
+                    version = (result.stdout or result.stderr).strip()
+                    if result.returncode != 0 or not version:
+                        version = "Python version unavailable"
+                except (OSError, subprocess.TimeoutExpired):
+                    version = "Python version unavailable"
+
+                env_item = QListWidgetItem(
+                    f"{project.name}  •  {version}\n{python_executable}"
+                )
+                env_item.setData(256, str(project))
+                self.environments_list.addItem(env_item)
+
+        self.total_projects_card.value_label.setText(str(len(projects)))
+        self.environments_card.value_label.setText(str(environment_count))
+
+        if not projects:
+            empty = QListWidgetItem(
+                "No projects found yet. Create one with + New Project."
+            )
+            empty.setFlags(empty.flags() & ~empty.ItemIsSelectable)
+            self.projects_list.addItem(empty)
+
+        if not environment_count:
+            empty = QListWidgetItem(
+                "No .venv or venv environments found in discovered projects."
+            )
+            empty.setFlags(empty.flags() & ~empty.ItemIsSelectable)
+            self.environments_list.addItem(empty)
+
+    def show_dashboard(self):
+        self.pages.setCurrentIndex(0)
+        self.refresh_workspace_views()
+
+    def show_projects(self):
+        self.pages.setCurrentIndex(1)
+        self.refresh_workspace_views()
+
+    def show_environments(self):
+        self.pages.setCurrentIndex(2)
+        self.refresh_workspace_views()
+
+    def selected_project_path(self, list_widget):
+        item = list_widget.currentItem()
+        if item is None:
+            QMessageBox.information(self, "Select a project", "Please select a project first.")
+            return None
+        value = item.data(256)
+        if not value:
+            QMessageBox.information(self, "No project selected", "Select a project from the list.")
+            return None
+        project = Path(value)
+        if not project.is_dir():
+            QMessageBox.warning(self, "Project not found", f"This folder no longer exists:\\n{project}")
+            self.refresh_workspace_views()
+            return None
+        return project
+
+    def open_selected_project_folder(self):
+        project = self.selected_project_path(self.projects_list)
+        if project:
+            try:
+                subprocess.Popen(["explorer", str(project)])
+            except OSError as error:
+                QMessageBox.critical(self, "Could not open folder", str(error))
+
+    def open_project_terminal(self, project, activate_environment=False):
+        terminal = shutil.which("pwsh") or shutil.which("powershell")
+        if not terminal:
+            QMessageBox.warning(self, "Terminal unavailable", "PowerShell could not be found on PATH.")
+            return
+        command = ""
+        python_executable = self.environment_python(project)
+        if activate_environment and python_executable:
+            activation_script = python_executable.parent / "Activate.ps1"
+            command = f'& "{activation_script}"'
+        try:
+            subprocess.Popen(
+                [terminal, "-NoExit", "-Command", command] if command else [terminal, "-NoExit"],
+                cwd=str(project),
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+            )
+        except OSError as error:
+            QMessageBox.critical(self, "Could not open terminal", str(error))
+
+    def open_selected_project_terminal(self):
+        project = self.selected_project_path(self.projects_list)
+        if project:
+            self.open_project_terminal(project)
+
+    def open_selected_environment_terminal(self):
+        project = self.selected_project_path(self.environments_list)
+        if project:
+            self.open_project_terminal(project, activate_environment=True)
+
+    def run_selected_project(self):
+        project = self.selected_project_path(self.projects_list)
+        if not project:
+            return
+        main_file = project / "main.py"
+        if not main_file.is_file():
+            QMessageBox.information(
+                self, "main.py not found",
+                f"No main.py file was found in this project:\\n{project}",
+            )
+            return
+        python_executable = self.environment_python(project)
+        if python_executable is None:
+            QMessageBox.warning(
+                self, "Environment not found",
+                "This project has no .venv or venv Python environment. Run 'uv sync' "
+                "in its folder before launching it.",
+            )
+            return
+        try:
+            subprocess.Popen(
+                [str(python_executable), str(main_file)],
+                cwd=str(project),
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+            )
+        except OSError as error:
+            QMessageBox.critical(self, "Could not run project", str(error))
+
+    def inspect_selected_environment(self):
+        project = self.selected_project_path(self.environments_list)
+        if not project:
+            return
+        python_executable = self.environment_python(project)
+        if not python_executable:
+            QMessageBox.warning(self, "Environment not found", "The environment's Python executable is missing.")
+            self.refresh_workspace_views()
+            return
+        try:
+            result = subprocess.run(
+                [shutil.which("uv") or "uv", "pip", "list", "--python", str(python_executable)],
+                cwd=str(project), capture_output=True, text=True, timeout=60, check=False,
+            )
+            output = (result.stdout or "").strip()
+            if result.returncode != 0:
+                output = (result.stderr or "Could not inspect packages.").strip()
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"Installed Packages • {project.name}")
+            dialog.resize(700, 500)
+            layout = QVBoxLayout(dialog)
+            text_view = QPlainTextEdit()
+            text_view.setReadOnly(True)
+            text_view.setPlainText(output or "No package information returned.")
+            layout.addWidget(text_view)
+            close_button = QPushButton("Close")
+            close_button.clicked.connect(dialog.accept)
+            layout.addWidget(close_button)
+            dialog.exec_()
+        except (OSError, subprocess.TimeoutExpired) as error:
+            QMessageBox.warning(self, "Package inspection failed", str(error))
 
     @staticmethod
     def add_nav_button(layout, text):
@@ -670,6 +981,7 @@ class DevSuiteWindow(QMainWindow):
 
         value_label = QLabel(value)
         value_label.setObjectName("card_value")
+        card.value_label = value_label
 
         layout.addWidget(title_label)
         layout.addWidget(value_label)
@@ -834,9 +1146,9 @@ class DevSuiteWindow(QMainWindow):
         confirmation = QMessageBox.question(
             self,
             "Create Python Project",
-            f"Create project '{project_name}'?\n\n"
+            f"Create project '{pro™ject_name}'?\n\n"
             f"Location:\n{project_directory}\n\n"
-            "DevSuite will:\n"
+            "DevSuite™ will:\n"
             "• Initialize a Python application with uv\n"
             "• Create a Git repository\n"
             "• Create a virtual environment\n"
@@ -976,6 +1288,7 @@ class DevSuiteWindow(QMainWindow):
                 + "Happy coding, buddy! 🐍",
             )
             self.recommended_packages = []
+            self.refresh_workspace_views()
 
         except subprocess.TimeoutExpired:
             QMessageBox.warning(
