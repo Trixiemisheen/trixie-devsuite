@@ -32,7 +32,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("DevSuite™ Settings")
+        self.setWindowTitle("DevSuite Settings")
         self.setMinimumWidth(360)
 
         self.setStyleSheet("""
@@ -1146,7 +1146,7 @@ class DevSuiteWindow(QMainWindow):
         confirmation = QMessageBox.question(
             self,
             "Create Python Project",
-            f"Create project '{pro™ject_name}'?\n\n"
+            f"Create project '{project_name}'?\n\n"
             f"Location:\n{project_directory}\n\n"
             "DevSuite™ will:\n"
             "• Initialize a Python application with uv\n"
