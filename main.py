@@ -682,9 +682,10 @@ class DevSuiteWindow(QMainWindow):
         self.root_layout.addWidget(self.sidebar)
 
         # Main dashboard
-        content = QWidget()
+        self.content = QWidget()
+        self.root_layout.addWidget(self.content, 1)
 
-        self.content_layout = QVBoxLayout(content)
+        self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(32, 28, 32, 28)
         self.content_layout.setSpacing(20)
 
@@ -731,7 +732,11 @@ class DevSuiteWindow(QMainWindow):
         self.content_layout.addWidget(actions_heading)
 
         new_project_button = QPushButton(
-            "+   Create a New Python Project")
+            "+   Create a New Python Project"
+        )
+        new_project_button.setObjectName("primary")
+        new_project_button.clicked.connect(self.create_new_project)
+        self.content_layout.addWidget(new_project_button)
 
 
     def build_projects_page(self):
