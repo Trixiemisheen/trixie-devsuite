@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -23,6 +24,7 @@ from PyQt5.QtWidgets import (
     QStackedWidget,
     QScrollArea,
     QPlainTextEdit,
+    QProgressBar,
     QVBoxLayout,
     QWidget,
 )
@@ -266,7 +268,7 @@ class PackageAdvisorDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("DevSuite™ Package Advisor")
+        self.setWindowTitle("DevSuite Package Advisor")
         self.resize(760, 700)
         self.setMinimumSize(650, 560)
         self.package_checks = {}
@@ -310,7 +312,7 @@ class PackageAdvisorDialog(QDialog):
         layout.addWidget(heading)
 
         intro = QLabel(
-            "Choose a project type and describe your idea. DevSuite™ will suggest "
+            "Choose a project type and describe your idea. DevSuite will suggest "
             "packages using its built-in offline rules. You stay in control."
         )
         intro.setWordWrap(True)
@@ -423,6 +425,103 @@ class PackageAdvisorDialog(QDialog):
             if checkbox.isChecked()
         ]
 
+
+
+class ProjectSetupWorker(QThread):
+    """Run project setup off the UI thread and stream command output."""
+    progress = pyqtSignal(str)
+    log_line = pyqtSignal(str)
+    completed = pyqtSignal(object)
+
+    def __init__(self, uv_executable, project_directory, project_name, packages):
+        super().__init__()
+        self.uv_executable = uv_executable
+        self.project_directory = Path(project_directory)
+        self.project_name = project_name
+        self.packages = list(packages)
+
+    def run_command(self, label, command, timeout_seconds):
+        self.progress.emit(label)
+        self.log_line.emit(f"\n> {' '.join(str(part) for part in command)}\n")
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+        )
+        try:
+            if process.stdout is not None:
+                for line in process.stdout:
+                    self.log_line.emit(line.rstrip())
+            return_code = process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            raise TimeoutError(f"{label} exceeded the {timeout_seconds}-second time limit.")
+        if return_code != 0:
+            raise RuntimeError(f"{label} failed with exit code {return_code}.")
+
+    def run(self):
+        try:
+            self.progress.emit("Preparing project folder…")
+            self.project_directory.parent.mkdir(parents=True, exist_ok=True)
+            self.run_command(
+                "Step 1 of 3: Initializing project and Git repository…",
+                [self.uv_executable, "init", "--app", "--python", "3.14", "--vcs", "git",
+                 "--no-workspace", "--name", self.project_name, str(self.project_directory)],
+                120,
+            )
+            self.run_command(
+                "Step 2 of 3: Creating the virtual environment and syncing dependencies…",
+                [self.uv_executable, "sync", "--directory", str(self.project_directory)],
+                300,
+            )
+            if self.packages:
+                self.run_command(
+                    "Step 3 of 3: Installing recommended packages…",
+                    [self.uv_executable, "add", "--directory", str(self.project_directory), *self.packages],
+                    600,
+                )
+            else:
+                self.progress.emit("Finalizing your clean Python project…")
+            self.completed.emit({"success": True, "packages": self.packages})
+        except Exception as error:
+            self.log_line.emit(f"\nERROR: {error}")
+            self.completed.emit({"success": False, "error": str(error), "packages": self.packages})
+
+
+class ProjectSetupProgressDialog(QDialog):
+    def __init__(self, project_name, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Creating Your Project")
+        self.setMinimumSize(560, 390)
+        layout = QVBoxLayout(self)
+        title = QLabel(f"🚀 Building <b>{project_name}</b>")
+        title.setWordWrap(True)
+        layout.addWidget(title)
+        self.status_label = QLabel("Getting things ready…")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
+        layout.addWidget(self.progress_bar)
+        layout.addWidget(QLabel("Live setup output"))
+        self.output = QPlainTextEdit()
+        self.output.setReadOnly(True)
+        self.output.setPlaceholderText("uv output will appear here while your project is being created…")
+        layout.addWidget(self.output, 1)
+        note = QLabel("Keep this window open while DevSuite prepares the project.")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+    def closeEvent(self, event):
+        if hasattr(self, "worker") and self.worker.isRunning():
+            event.ignore()
+            return
+        super().closeEvent(event)
 
 
 class DevSuiteWindow(QMainWindow):
@@ -563,7 +662,7 @@ class DevSuiteWindow(QMainWindow):
         )
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite™  •  v0.4.0")
+        version = QLabel("Trixie DevSuite  •  v0.5.0")
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
         )
@@ -672,7 +771,7 @@ class DevSuiteWindow(QMainWindow):
         layout.addWidget(heading)
 
         subtitle = QLabel(
-            "Projects discovered in your DevSuite™ folder, its parent workspace, "
+            "Projects discovered in your DevSuite folder, its parent workspace, "
             "and your personal Projects folder."
         )
         subtitle.setObjectName("subtitle")
@@ -718,8 +817,8 @@ class DevSuiteWindow(QMainWindow):
         layout.addWidget(heading)
 
         subtitle = QLabel(
-            "Virtual environments discovered in the projects DevSuite™ knows about. "
-            "DevSuite™ will inspect them without deleting or modifying them."
+            "Virtual environments discovered in the projects DevSuite knows about. "
+            "DevSuite will inspect them without deleting or modifying them."
         )
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
@@ -1148,7 +1247,7 @@ class DevSuiteWindow(QMainWindow):
             "Create Python Project",
             f"Create project '{project_name}'?\n\n"
             f"Location:\n{project_directory}\n\n"
-            "DevSuite™ will:\n"
+            "DevSuite will:\n"
             "• Initialize a Python application with uv\n"
             "• Create a Git repository\n"
             "• Create a virtual environment\n"
@@ -1160,152 +1259,62 @@ class DevSuiteWindow(QMainWindow):
         if confirmation != QMessageBox.Yes:
             return
 
-        try:
-            # Create the selected parent directory if necessary.
-            parent_directory.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
+        selected_packages = list(self.recommended_packages)
+        progress_dialog = ProjectSetupProgressDialog(project_name, self)
+        worker = ProjectSetupWorker(
+            uv_executable,
+            project_directory,
+            project_name,
+            selected_packages,
+        )
+        progress_dialog.worker = worker
+        worker.progress.connect(progress_dialog.status_label.setText)
+        worker.log_line.connect(progress_dialog.output.appendPlainText)
 
-            # Initialize a standalone Python application.
-            init_result = subprocess.run(
-                [
-                    uv_executable,
-                    "init",
-                    "--app",
-                    "--python",
-                    "3.14",
-                    "--vcs",
-                    "git",
-                    "--no-workspace",
-                    "--name",
-                    project_name,
-                    str(project_directory),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
-
-            if init_result.returncode != 0:
-                details = (
-                    init_result.stderr.strip()
-                    or init_result.stdout.strip()
-                    or "uv returned an unknown error."
-                )
-
-                QMessageBox.critical(
-                    self,
-                    "Project initialization failed",
-                    f"uv could not initialize the project.\n\n"
-                    f"{details}\n\n"
-                    f"Check the destination:\n{project_directory}",
-                )
-                return
-
-            # Create the virtual environment and synchronize dependencies.
-            sync_result = subprocess.run(
-                [
-                    uv_executable,
-                    "sync",
-                    "--directory",
-                    str(project_directory),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
-            )
-
-            if sync_result.returncode != 0:
-                details = (
-                    sync_result.stderr.strip()
-                    or sync_result.stdout.strip()
-                    or "uv sync returned an unknown error."
-                )
-
-                QMessageBox.warning(
-                    self,
-                    "Project created with a setup issue",
-                    "The project and Git repository were initialized, "
-                    "but environment setup did not complete successfully.\n\n"
-                    f"{details}\n\n"
-                    f"Project location:\n{project_directory}\n\n"
-                    "You can finish setup by running:\n"
-                    "uv sync",
-                )
-                return
-
-            selected_packages = list(self.recommended_packages)
-            if selected_packages:
-                add_result = subprocess.run(
-                    [
-                        uv_executable,
-                        "add",
-                        "--directory",
-                        str(project_directory),
-                        *selected_packages,
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=600,
-                    check=False,
-                )
-                if add_result.returncode != 0:
-                    details = (
-                        add_result.stderr.strip()
-                        or add_result.stdout.strip()
-                        or "uv add returned an unknown error."
-                    )
-                    QMessageBox.warning(
-                        self,
-                        "Project created; dependency installation needs attention",
-                        "The project was created, but some selected packages could not "
-                        "be installed. You can retry from the project directory with "
-                        "'uv add package-name'.\n\n"
-                        f"{details}\n\nProject location:\n{project_directory}",
-                    )
-                    self.recommended_packages = []
-                    return
-
-            QMessageBox.information(
-                self,
-                "Project created successfully! 🎉",
-                f"Your Python project is ready!\n\n"
-                f"Name: {project_name}\n\n"
-                f"Location:\n{project_directory}\n\n"
-                "Created:\n"
-                "✓ Python application structure\n"
-                "✓ pyproject.toml\n"
-                "✓ Git repository\n"
-                "✓ Virtual environment\n"
-                "✓ uv.lock\n"
-                + (
-                    "✓ Dependencies: " + ", ".join(selected_packages) + "\n\n"
-                    if selected_packages else "\n"
-                )
-                + "Happy coding, buddy! 🐍",
-            )
+        def setup_finished(result):
+            progress_dialog.progress_bar.setRange(0, 1)
+            progress_dialog.progress_bar.setValue(1)
+            progress_dialog.accept()
             self.recommended_packages = []
             self.refresh_workspace_views()
 
-        except subprocess.TimeoutExpired:
-            QMessageBox.warning(
-                self,
-                "Setup timed out",
-                "Project setup took too long and was stopped.\n\n"
-                f"Check the project directory:\n{project_directory}\n\n"
-                "If the project was partially created, inspect it "
-                "before trying again.",
-            )
+            if result.get("success"):
+                QMessageBox.information(
+                    self,
+                    "Project created successfully! 🎉",
+                    f"Your Python project is ready!\n\n"
+                    f"Name: {project_name}\n\n"
+                    f"Location:\n{project_directory}\n\n"
+                    "Created:\n"
+                    "✓ Python application structure\n"
+                    "✓ pyproject.toml\n"
+                    "✓ Git repository\n"
+                    "✓ Virtual environment\n"
+                    "✓ uv.lock\n"
+                    + ("✓ Dependencies: " + ", ".join(selected_packages) + "\n\n"
+                       if selected_packages else "\n")
+                    + "Happy coding, buddy! 🐍",
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Project setup needs attention",
+                    "DevSuite could not finish every setup step. The project may have been partially created.\n\n"
+                    f"Details: {result.get('error', 'Unknown setup error')}\n\n"
+                    f"Project location:\n{project_directory}\n\n"
+                    "Open the project folder and inspect the files before retrying. "
+                    "You can usually finish dependency setup by running `uv sync` there.",
+                )
 
-        except OSError as error:
-            QMessageBox.critical(
-                self,
-                "Project creation error",
-                f"An operating-system error occurred:\n\n{error}",
+        worker.setup_result = None
+        worker.completed.connect(lambda result: setattr(worker, "setup_result", result))
+        worker.finished.connect(
+            lambda: setup_finished(
+                worker.setup_result or {"success": False, "error": "Setup worker stopped unexpectedly."}
             )
+        )
+        worker.start()
+        progress_dialog.exec_()
 
 def main():
     app = QApplication(sys.argv)
