@@ -469,8 +469,19 @@ class ProjectSetupWorker(QThread):
             self.project_directory.parent.mkdir(parents=True, exist_ok=True)
             self.run_command(
                 "Step 1 of 3: Initializing project and Git repository…",
-                [self.uv_executable, "init", "--app", "--python", "3.14", "--vcs", "git",
-                 "--no-workspace", "--name", self.project_name, str(self.project_directory)],
+                [
+                    self.uv_executable,
+                    "init",
+                    "--app",
+                    "--python",
+                    "3.14",
+                    "--vcs",
+                    "git",
+                    "--no-workspace",
+                    "--name",
+                    self.project_name,
+                    str(self.project_directory),
+                ],
                 120,
             )
             self.run_command(
@@ -720,45 +731,8 @@ class DevSuiteWindow(QMainWindow):
         self.content_layout.addWidget(actions_heading)
 
         new_project_button = QPushButton(
-            "+   Create a New Python Project"
-        )
-        new_project_button.setObjectName("primary")
-        new_project_button.setMinimumHeight(48)
-        new_project_button.clicked.connect(self.create_new_project)
+            "+   Create a New Python Project")
 
-        self.content_layout.addWidget(new_project_button)
-
-        advisor_button = QPushButton("🧠   Recommend Packages for My Idea")
-        advisor_button.setMinimumHeight(45)
-        advisor_button.clicked.connect(self.open_package_advisor)
-        self.content_layout.addWidget(advisor_button)
-
-        terminal_button = QPushButton(">_   Open Terminal")
-        terminal_button.setMinimumHeight(45)
-        terminal_button.clicked.connect(self.open_terminal)
-
-        self.content_layout.addWidget(terminal_button)
-
-        self.content_layout.addStretch()
-
-        footer = QLabel(
-            "TRIXIE MISHEEN™  •  BUILT WITH PYTHON & PyQt5"
-        )
-        footer.setStyleSheet(
-            "color: #697586; font-size: 11px; padding: 8px;"
-        )
-        self.content_layout.addWidget(footer)
-
-        self.pages = QStackedWidget()
-        self.pages.addWidget(content)
-        self.projects_page = self.build_projects_page()
-        self.environments_page = self.build_environments_page()
-        self.pages.addWidget(self.projects_page)
-        self.pages.addWidget(self.environments_page)
-        self.root_layout.addWidget(self.pages, 1)
-
-        self.refresh_workspace_views()
-        self.update_responsive_layout()
 
     def build_projects_page(self):
         page = QWidget()
@@ -778,6 +752,15 @@ class DevSuiteWindow(QMainWindow):
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
+        # Search projects by name or folder path.
+        self.project_search = QLineEdit()
+        self.project_search.setPlaceholderText(
+            "🔍  Search projects by name or location..."
+        )
+        self.project_search.setClearButtonEnabled(True)
+        self.project_search.textChanged.connect(self.filter_projects)
+        layout.addWidget(self.project_search)
+
         self.projects_list = QListWidget()
         self.projects_list.setStyleSheet(
             "QListWidget { background-color: #202633; border: 1px solid #303849; "
@@ -788,6 +771,7 @@ class DevSuiteWindow(QMainWindow):
         layout.addWidget(self.projects_list, 1)
 
         actions = QHBoxLayout()
+
         refresh_button = QPushButton("↻  Refresh")
         refresh_button.clicked.connect(self.refresh_workspace_views)
         actions.addWidget(refresh_button)
@@ -803,15 +787,18 @@ class DevSuiteWindow(QMainWindow):
         run_button = QPushButton("▶  Run main.py")
         run_button.clicked.connect(self.run_selected_project)
         actions.addWidget(run_button)
+
         layout.addLayout(actions)
         return page
+
+
 
     def build_environments_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(32, 28, 32, 28)
         layout.setSpacing(16)
-
+    
         heading = QLabel("Python Environments")
         heading.setObjectName("heading")
         layout.addWidget(heading)
@@ -820,9 +807,24 @@ class DevSuiteWindow(QMainWindow):
             "Virtual environments discovered in the projects DevSuite knows about. "
             "DevSuite will inspect them without deleting or modifying them."
         )
-        subtitle.setObjectName("subtitle")
+        
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
+
+        # Search projects by name or folder path.
+        self.project_search = QLineEdit()
+        self.project_search.setPlaceholderText(
+            "🔍  Search projects by name or location..."
+        )
+        self.project_search.setClearButtonEnabled(True)
+        self.project_search.textChanged.connect(
+            self.filter_projects
+        )
+        layout.addWidget(self.project_search)
+
+        self.projects_list = QListWidget()
+
+
 
         self.environments_list = QListWidget()
         self.environments_list.setStyleSheet(
@@ -1291,8 +1293,13 @@ class DevSuiteWindow(QMainWindow):
                     "✓ Git repository\n"
                     "✓ Virtual environment\n"
                     "✓ uv.lock\n"
-                    + ("✓ Dependencies: " + ", ".join(selected_packages) + "\n\n"
-                       if selected_packages else "\n")
+                    + (
+                        "✓ Dependencies: "
+                        + ", ".join(selected_packages)
+                        + "\n\n"
+                        if selected_packages
+                        else "\n"
+                    )
                     + "Happy coding, buddy! 🐍",
                 )
             else:
@@ -1327,4 +1334,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
