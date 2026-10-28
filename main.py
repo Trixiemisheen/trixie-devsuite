@@ -762,9 +762,10 @@ class DevSuiteWindow(QMainWindow):
 
     def build_projects_page(self):
         page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 28, 32, 28)
-        layout.setSpacing(16)
+        self.projects_layout = QVBoxLayout(page)
+        layout = self.projects_layout
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(14)
 
         heading = QLabel("My Projects")
         heading.setObjectName("heading")
@@ -817,9 +818,10 @@ class DevSuiteWindow(QMainWindow):
 
     def build_environments_page(self):
         page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 28, 32, 28)
-        layout.setSpacing(16)
+        self.environments_layout = QVBoxLayout(page)
+        layout = self.environments_layout
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(14)
 
         heading = QLabel("Python Environments")
         heading.setObjectName("heading")
@@ -1136,6 +1138,30 @@ class DevSuiteWindow(QMainWindow):
             vertical_padding,
         )
         self.content_layout.setSpacing(spacing)
+
+        # Keep workspace pages comfortable at normal window sizes too.
+        # Their margins adapt independently from the dashboard margins.
+        target_sidebar_width = max(200, min(250, int(width * 0.21)))
+        available_width = max(0, width - target_sidebar_width)
+        if available_width < 700:
+            page_horizontal = 14
+            page_vertical = 14
+            page_spacing = 10
+        elif available_width < 900:
+            page_horizontal = 20
+            page_vertical = 18
+            page_spacing = 12
+        else:
+            page_horizontal = 28
+            page_vertical = 24
+            page_spacing = 16
+
+        for page_layout in (self.projects_layout, self.environments_layout):
+            page_layout.setContentsMargins(
+                page_horizontal, page_vertical,
+                page_horizontal, page_vertical,
+            )
+            page_layout.setSpacing(page_spacing)
 
         self.sidebar.setFixedWidth(
             max(200, min(250, int(width * 0.21)))
