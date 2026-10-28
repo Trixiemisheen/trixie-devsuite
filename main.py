@@ -778,6 +778,15 @@ class DevSuiteWindow(QMainWindow):
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
+        # Live search by project name or folder path.
+        self.project_search = QLineEdit()
+        self.project_search.setPlaceholderText(
+            "🔍  Search projects by name or location..."
+        )
+        self.project_search.setClearButtonEnabled(True)
+        self.project_search.textChanged.connect(self.filter_projects)
+        layout.addWidget(self.project_search)
+
         self.projects_list = QListWidget()
         self.projects_list.setStyleSheet(
             "QListWidget { background-color: #202633; border: 1px solid #303849; "
@@ -820,7 +829,7 @@ class DevSuiteWindow(QMainWindow):
             "Virtual environments discovered in the projects DevSuite knows about. "
             "DevSuite will inspect them without deleting or modifying them."
         )
-        subtitle.setObjectName("subtitle")
+        
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
@@ -941,6 +950,22 @@ class DevSuiteWindow(QMainWindow):
     def show_projects(self):
         self.pages.setCurrentIndex(1)
         self.refresh_workspace_views()
+
+    def filter_projects(self, search_text):
+        """Filter projects by their name or folder path, case-insensitively."""
+        search_text = search_text.casefold().strip()
+
+        for index in range(self.projects_list.count()):
+            item = self.projects_list.item(index)
+            project_path = item.data(256)
+
+            # Keep informational messages visible when no projects are found.
+            if not project_path:
+                item.setHidden(False)
+                continue
+
+            searchable_text = f"{item.text()} {project_path}".casefold()
+            item.setHidden(search_text not in searchable_text)
 
     def show_environments(self):
         self.pages.setCurrentIndex(2)
