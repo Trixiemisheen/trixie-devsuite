@@ -140,7 +140,17 @@ class NewProjectDialog(QDialog):
                 background-color: #293548;
             }
         """)
-
+def set_packages_summary(self, packages):
+    summary = QLabel(f"📦 Will install: {', '.join(packages)}")
+    summary.setWordWrap(True)
+    summary.setStyleSheet("color: #00E5FF; font-size: 12px;")
+    # Insert above the buttons — access the layout via self.layout()
+    self.layout().insertWidget(self.layout().count() - 1, summary)def set_packages_summary(self, packages):
+    summary = QLabel(f"📦 Will install: {', '.join(packages)}")
+    summary.setWordWrap(True)
+    summary.setStyleSheet("color: #00E5FF; font-size: 12px;")
+    # Insert above the buttons — access the layout via self.layout()
+    self.layout().insertWidget(self.layout().count() - 1, summary)
         self.project_name = QLineEdit()
         self.project_name.setPlaceholderText(
             "e.g. my_awesome_project"
@@ -374,6 +384,8 @@ class PackageAdvisorDialog(QDialog):
         self.idea_input.returnPressed.connect(self.refresh_recommendations)
         self.refresh_recommendations()
 
+
+
     def refresh_recommendations(self, *_):
         while self.recommendation_layout.count():
             item = self.recommendation_layout.takeAt(0)
@@ -425,6 +437,16 @@ class PackageAdvisorDialog(QDialog):
         self.recommendation_layout.addStretch()
 
     def selected_packages(self):
+        buttons = QDialogButtonBox(QDialogButtonBox.Cancel)
+        self.skip_button = buttons.addButton(
+            "Skip — No Packages", QDialogButtonBox.ActionRole
+            )
+        self.continue_button = buttons.addButton(
+            "Continue to Project Details", QDialogButtonBox.AcceptRole
+            )
+        self.continue_button.setObjectName("primary")
+        buttons.rejected.connect(self.reject)
+        self.skip_button.clicked.connect(self.accept)  # accepted with zero selections
         return [
             name for name, checkbox in self.package_checks.items()
             if checkbox.isChecked()
@@ -1248,17 +1270,27 @@ class DevSuiteWindow(QMainWindow):
             self.interface_density = dialog.density_combo.currentText()
             self.settings.setValue("interface_density", self.interface_density)
             self.update_responsive_layout()
+    def create_new_project(self, *_):
+        """Step 1: Package advisor (skippable) → Step 2: project details."""
+        advisor = PackageAdvisorDialog(self)
+        if advisor.exec_() == QDialog.Accepted:
+            self.recommended_packages = advisor.selected_packages()
+        else:
+            # User skipped or cancelled the advisor — continue with no packages
+            # only if they pressed "Skip", abort if they cancelled outright.
+            if advisor.result() == QDialog.Rejected:
+                return
+             self.recommended_packages = []
 
+        dialog = NewProjectDialog(self)
+        # Show a reminder of what will be installed
+        if self.recommended_packages:
+            dialog.set_packages_summary(self.recommended_packages)
 
-        dialog = PackageAdvisorDialog(self)
-        if dialog.exec_() == QDialog.Accepted:
-            self.recommended_packages = dialog.selected_packages()
-            if not self.recommended_packages:
-                QMessageBox.information(
-                    self, "No packages selected",
-                    "No dependencies were selected. You can still create a clean Python project.",
-                )
-            self.create_new_project()
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        # ... everything from "project_name, project_location, python_version = ..."
+        # onwards stays exactly as in the last version.
 
     def create_new_project(self, *_):
         dialog = NewProjectDialog(self)
