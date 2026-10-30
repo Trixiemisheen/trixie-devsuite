@@ -1,9 +1,11 @@
+import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from PyQt5.QtCore import QThread, pyqtSignal
+
+from PyQt5.QtCore import QSettings, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -29,12 +31,14 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+CREATE_CONSOLE = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("DevSuite Settings")
+        self.setWindowTitle("DevSuite™ Settings")
         self.setMinimumWidth(360)
 
         self.setStyleSheet("""
@@ -85,9 +89,7 @@ class SettingsDialog(QDialog):
         self.density_combo.addItems(["Comfortable", "Compact"])
 
         if parent:
-            self.density_combo.setCurrentText(
-                parent.interface_density
-            )
+            self.density_combo.setCurrentText(parent.interface_density)
 
         layout.addWidget(self.density_combo)
 
@@ -118,7 +120,7 @@ class NewProjectDialog(QDialog):
                 color: #E6EDF3;
             }
 
-            QLineEdit {
+            QLineEdit, QComboBox {
                 background-color: #202633;
                 color: #E6EDF3;
                 border: 1px solid #303849;
@@ -156,9 +158,14 @@ class NewProjectDialog(QDialog):
         location_layout.addWidget(self.project_location)
         location_layout.addWidget(browse_button)
 
+        self.python_version = QComboBox()
+        self.python_version.addItems(["3.12", "3.13", "3.14"])
+        self.python_version.setCurrentText("3.13")
+
         form_layout = QFormLayout()
         form_layout.addRow("Project name:", self.project_name)
         form_layout.addRow("Project location:", location_layout)
+        form_layout.addRow("Python version:", self.python_version)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel
@@ -188,9 +195,8 @@ class NewProjectDialog(QDialog):
         return (
             self.project_name.text().strip(),
             self.project_location.text().strip(),
+            self.python_version.currentText(),
         )
-
-
 
 
 PACKAGE_CATALOG = {
@@ -268,7 +274,7 @@ class PackageAdvisorDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("DevSuite Package Advisor")
+        self.setWindowTitle("DevSuite™ Package Advisor")
         self.resize(760, 700)
         self.setMinimumSize(650, 560)
         self.package_checks = {}
@@ -312,7 +318,7 @@ class PackageAdvisorDialog(QDialog):
         layout.addWidget(heading)
 
         intro = QLabel(
-            "Choose a project type and describe your idea. DevSuite will suggest "
+            "Choose a project type and describe your idea. DevSuite™ will suggest "
             "packages using its built-in offline rules. You stay in control."
         )
         intro.setWordWrap(True)
@@ -380,7 +386,6 @@ class PackageAdvisorDialog(QDialog):
         packages = list(PACKAGE_CATALOG[project_type])
         idea = self.idea_input.text().lower()
 
-        # Add idea-specific suggestions, without duplicating existing packages.
         existing = {name.lower() for name, _, _ in packages}
         for keyword, names in IDEA_KEYWORDS.items():
             if keyword in idea:
@@ -426,40 +431,55 @@ class PackageAdvisorDialog(QDialog):
         ]
 
 
-
 class ProjectSetupWorker(QThread):
     """Run project setup off the UI thread and stream command output."""
     progress = pyqtSignal(str)
     log_line = pyqtSignal(str)
     completed = pyqtSignal(object)
 
-    def __init__(self, uv_executable, project_directory, project_name, packages):
+    def __init__(self, uv_executable, project_directory, project_name, packages, python_version):
         super().__init__()
         self.uv_executable = uv_executable
         self.project_directory = Path(project_directory)
         self.project_name = project_name
         self.packages = list(packages)
+        self.python_version = python_version
+        self._process = None
+        self._cancel = False
+
+    def cancel(self):
+        """Request cancellation and kill the running subprocess, if any."""
+        self._cancel = True
+        if self._process and self._process.poll() is None:
+            self._process.kill()
 
     def run_command(self, label, command, timeout_seconds):
+        if self._cancel:
+            raise RuntimeError("Setup was cancelled by the user.")
+
         self.progress.emit(label)
         self.log_line.emit(f"\n> {' '.join(str(part) for part in command)}\n")
-        process = subprocess.Popen(
+        self._process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            universal_newlines=True,
+            encoding="utf-8",
+            errors="replace",
         )
         try:
-            if process.stdout is not None:
-                for line in process.stdout:
+            if self._process.stdout is not None:
+                for line in self._process.stdout:
                     self.log_line.emit(line.rstrip())
-            return_code = process.wait(timeout=timeout_seconds)
+            return_code = self._process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
+            self._process.kill()
+            self._process.wait()
             raise TimeoutError(f"{label} exceeded the {timeout_seconds}-second time limit.")
+        finally:
+            self._process = None
+
         if return_code != 0:
             raise RuntimeError(f"{label} failed with exit code {return_code}.")
 
@@ -469,19 +489,25 @@ class ProjectSetupWorker(QThread):
             self.project_directory.parent.mkdir(parents=True, exist_ok=True)
             self.run_command(
                 "Step 1 of 3: Initializing project and Git repository…",
-                [self.uv_executable, "init", "--app", "--python", "3.14", "--vcs", "git",
-                 "--no-workspace", "--name", self.project_name, str(self.project_directory)],
+                [self.uv_executable, "init", "--app", "--python", self.python_version,
+                 "--vcs", "git", "--no-workspace", "--name", self.project_name,
+                 str(self.project_directory)],
                 120,
             )
+            if self._cancel:
+                raise RuntimeError("Setup was cancelled by the user.")
             self.run_command(
                 "Step 2 of 3: Creating the virtual environment and syncing dependencies…",
                 [self.uv_executable, "sync", "--directory", str(self.project_directory)],
                 300,
             )
+            if self._cancel:
+                raise RuntimeError("Setup was cancelled by the user.")
             if self.packages:
                 self.run_command(
                     "Step 3 of 3: Installing recommended packages…",
-                    [self.uv_executable, "add", "--directory", str(self.project_directory), *self.packages],
+                    [self.uv_executable, "add", "--directory",
+                     str(self.project_directory), *self.packages],
                     600,
                 )
             else:
@@ -489,7 +515,9 @@ class ProjectSetupWorker(QThread):
             self.completed.emit({"success": True, "packages": self.packages})
         except Exception as error:
             self.log_line.emit(f"\nERROR: {error}")
-            self.completed.emit({"success": False, "error": str(error), "packages": self.packages})
+            self.completed.emit(
+                {"success": False, "error": str(error), "packages": self.packages}
+            )
 
 
 class ProjectSetupProgressDialog(QDialog):
@@ -501,7 +529,7 @@ class ProjectSetupProgressDialog(QDialog):
         title = QLabel(f"🚀 Building <b>{project_name}</b>")
         title.setWordWrap(True)
         layout.addWidget(title)
-        self.status_label = QLabel("Getting things ready…")
+        self.status_label = QLabel("Just wait a bit as we are getting things ready…")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
         self.progress_bar = QProgressBar()
@@ -513,13 +541,25 @@ class ProjectSetupProgressDialog(QDialog):
         self.output.setReadOnly(True)
         self.output.setPlaceholderText("uv output will appear here while your project is being created…")
         layout.addWidget(self.output, 1)
-        note = QLabel("Keep this window open while DevSuite prepares the project.")
+
+        self.cancel_button = QPushButton("Cancel setup")
+        self.cancel_button.clicked.connect(self.request_cancel)
+        layout.addWidget(self.cancel_button)
+
+        note = QLabel("Keep this window open while DevSuite™ prepares the project.")
         note.setWordWrap(True)
         layout.addWidget(note)
+
+    def request_cancel(self):
+        if hasattr(self, "worker") and self.worker.isRunning():
+            self.cancel_button.setEnabled(False)
+            self.status_label.setText("Cancelling… stopping the running command.")
+            self.worker.cancel()
 
     def closeEvent(self, event):
         if hasattr(self, "worker") and self.worker.isRunning():
             event.ignore()
+            self.request_cancel()
             return
         super().closeEvent(event)
 
@@ -532,7 +572,10 @@ class DevSuiteWindow(QMainWindow):
         self.resize(1100, 700)
         self.setMinimumSize(900, 600)
 
-        self.interface_density = "Comfortable"
+        self.settings = QSettings("TrixieMisheen", "DevSuite")
+        self.interface_density = self.settings.value(
+            "interface_density", "Comfortable", str
+        )
         self.recommended_packages = []
 
         self.setStyleSheet("""
@@ -615,7 +658,6 @@ class DevSuiteWindow(QMainWindow):
             }
         """)
 
-        # Main layout
         central = QWidget()
         self.setCentralWidget(central)
 
@@ -643,26 +685,24 @@ class DevSuiteWindow(QMainWindow):
         dashboard_nav = self.add_nav_button(sidebar_layout, "⌂   Dashboard")
         dashboard_nav.clicked.connect(self.show_dashboard)
 
-        new_project_nav = self.add_nav_button(
-            sidebar_layout, "+   New Project"
-        )
+        new_project_nav = self.add_nav_button(sidebar_layout, "+   New Project")
         new_project_nav.clicked.connect(self.create_new_project)
 
         projects_nav = self.add_nav_button(sidebar_layout, "▣   My Projects")
         projects_nav.clicked.connect(self.show_projects)
+
         environments_nav = self.add_nav_button(sidebar_layout, "⚙   Environments")
         environments_nav.clicked.connect(self.show_environments)
+
         packages_nav = self.add_nav_button(sidebar_layout, "◇   Package Advisor")
         packages_nav.clicked.connect(self.open_package_advisor)
 
         sidebar_layout.addStretch()
 
-        settings_button = self.add_nav_button(
-            sidebar_layout, "⚙   Settings"
-        )
+        settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite  •  v0.5.0")
+        version = QLabel("Trixie DevSuite™  •  v0.5.1")
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
         )
@@ -687,7 +727,7 @@ class DevSuiteWindow(QMainWindow):
         subtitle.setObjectName("subtitle")
         self.content_layout.addWidget(subtitle)
 
-        welcome = QLabel("Welcome back, Developer! 🐍")
+        welcome = QLabel("Welcome back, Trixie! 🐍")
         welcome.setStyleSheet(
             "font-size: 19px; font-weight: bold; padding-top: 12px;"
         )
@@ -700,7 +740,6 @@ class DevSuiteWindow(QMainWindow):
         description.setObjectName("subtitle")
         self.content_layout.addWidget(description)
 
-        # Statistics cards
         stats_layout = QHBoxLayout()
         stats_layout.setSpacing(16)
 
@@ -719,13 +758,10 @@ class DevSuiteWindow(QMainWindow):
         actions_heading.setObjectName("section")
         self.content_layout.addWidget(actions_heading)
 
-        new_project_button = QPushButton(
-            "+   Create a New Python Project"
-        )
+        new_project_button = QPushButton("+   Create a New Python Project")
         new_project_button.setObjectName("primary")
         new_project_button.setMinimumHeight(48)
         new_project_button.clicked.connect(self.create_new_project)
-
         self.content_layout.addWidget(new_project_button)
 
         advisor_button = QPushButton("🧠   Recommend Packages for My Idea")
@@ -736,14 +772,11 @@ class DevSuiteWindow(QMainWindow):
         terminal_button = QPushButton(">_   Open Terminal")
         terminal_button.setMinimumHeight(45)
         terminal_button.clicked.connect(self.open_terminal)
-
         self.content_layout.addWidget(terminal_button)
 
         self.content_layout.addStretch()
 
-        footer = QLabel(
-            "TRIXIE MISHEEN™  •  BUILT WITH PYTHON & PyQt5"
-        )
+        footer = QLabel("TRIXIE MISHEEN™  •  BUILT WITH PYTHON & PyQt5")
         footer.setStyleSheet(
             "color: #697586; font-size: 11px; padding: 8px;"
         )
@@ -762,10 +795,9 @@ class DevSuiteWindow(QMainWindow):
 
     def build_projects_page(self):
         page = QWidget()
-        self.projects_layout = QVBoxLayout(page)
-        layout = self.projects_layout
-        layout.setContentsMargins(24, 22, 24, 22)
-        layout.setSpacing(14)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
 
         heading = QLabel("My Projects")
         heading.setObjectName("heading")
@@ -778,15 +810,6 @@ class DevSuiteWindow(QMainWindow):
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
-
-        # Live search by project name or folder path.
-        self.project_search = QLineEdit()
-        self.project_search.setPlaceholderText(
-            "🔍  Search projects by name or location..."
-        )
-        self.project_search.setClearButtonEnabled(True)
-        self.project_search.textChanged.connect(self.filter_projects)
-        layout.addWidget(self.project_search)
 
         self.projects_list = QListWidget()
         self.projects_list.setStyleSheet(
@@ -818,20 +841,19 @@ class DevSuiteWindow(QMainWindow):
 
     def build_environments_page(self):
         page = QWidget()
-        self.environments_layout = QVBoxLayout(page)
-        layout = self.environments_layout
-        layout.setContentsMargins(24, 22, 24, 22)
-        layout.setSpacing(14)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
 
         heading = QLabel("Python Environments")
         heading.setObjectName("heading")
         layout.addWidget(heading)
 
         subtitle = QLabel(
-            "Virtual environments discovered in the projects DevSuite knows about. "
+            "Virtual environments discovered in the projects DevSuite™ knows about. "
             "DevSuite will inspect them without deleting or modifying them."
         )
-        
+        subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
@@ -892,7 +914,10 @@ class DevSuiteWindow(QMainWindow):
     @staticmethod
     def environment_python(project):
         for folder_name in (".venv", "venv"):
-            candidate = project / folder_name / "Scripts" / "python.exe"
+            scripts = "Scripts" if os.name == "nt" else "bin"
+            candidate = project / folder_name / scripts / (
+                "python.exe" if os.name == "nt" else "python"
+            )
             if candidate.is_file():
                 return candidate
         return None
@@ -933,7 +958,7 @@ class DevSuiteWindow(QMainWindow):
 
         if not projects:
             empty = QListWidgetItem(
-                "No projects found yet. Create one with + New Project."
+                "Developer! No projects found yet. Create one with + New Project."
             )
             empty.setFlags(empty.flags() & ~empty.ItemIsSelectable)
             self.projects_list.addItem(empty)
@@ -953,22 +978,6 @@ class DevSuiteWindow(QMainWindow):
         self.pages.setCurrentIndex(1)
         self.refresh_workspace_views()
 
-    def filter_projects(self, search_text):
-        """Filter projects by their name or folder path, case-insensitively."""
-        search_text = search_text.casefold().strip()
-
-        for index in range(self.projects_list.count()):
-            item = self.projects_list.item(index)
-            project_path = item.data(256)
-
-            # Keep informational messages visible when no projects are found.
-            if not project_path:
-                item.setHidden(False)
-                continue
-
-            searchable_text = f"{item.text()} {project_path}".casefold()
-            item.setHidden(search_text not in searchable_text)
-
     def show_environments(self):
         self.pages.setCurrentIndex(2)
         self.refresh_workspace_views()
@@ -984,34 +993,60 @@ class DevSuiteWindow(QMainWindow):
             return None
         project = Path(value)
         if not project.is_dir():
-            QMessageBox.warning(self, "Project not found", f"This folder no longer exists:\\n{project}")
+            QMessageBox.warning(self, "Project not found", f"This folder no longer exists:\n{project}")
             self.refresh_workspace_views()
             return None
         return project
 
     def open_selected_project_folder(self):
         project = self.selected_project_path(self.projects_list)
-        if project:
-            try:
+        if not project:
+            return
+        try:
+            if os.name == "nt":
                 subprocess.Popen(["explorer", str(project)])
-            except OSError as error:
-                QMessageBox.critical(self, "Could not open folder", str(error))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(project)])
+            else:
+                subprocess.Popen(["xdg-open", str(project)])
+        except OSError as error:
+            QMessageBox.critical(self, "Could not open folder", str(error))
 
     def open_project_terminal(self, project, activate_environment=False):
-        terminal = shutil.which("pwsh") or shutil.which("powershell")
-        if not terminal:
-            QMessageBox.warning(self, "Terminal unavailable", "PowerShell could not be found on PATH.")
-            return
-        command = ""
-        python_executable = self.environment_python(project)
-        if activate_environment and python_executable:
-            activation_script = python_executable.parent / "Activate.ps1"
-            command = f'& "{activation_script}"'
+        if os.name == "nt":
+            terminal = shutil.which("pwsh") or shutil.which("powershell")
+            if not terminal:
+                QMessageBox.warning(
+                    self, "Terminal unavailable",
+                    "PowerShell could not be found on PATH."
+                )
+                return
+            command = ""
+            python_executable = self.environment_python(project)
+            if activate_environment and python_executable:
+                activation_script = python_executable.parent / "Activate.ps1"
+                command = f'& "{activation_script}"'
+            args = (
+                [terminal, "-NoExit", "-Command", command]
+                if command else [terminal, "-NoExit"]
+            )
+        else:
+            terminal = shutil.which("x-terminal-emulator") or shutil.which(
+                "gnome-terminal"
+            ) or shutil.which("konsole") or shutil.which("xterm")
+            if not terminal:
+                QMessageBox.warning(
+                    self, "Terminal unavailable",
+                    "No terminal emulator was found on this system."
+                )
+                return
+            args = [terminal]
+
         try:
             subprocess.Popen(
-                [terminal, "-NoExit", "-Command", command] if command else [terminal, "-NoExit"],
+                args,
                 cwd=str(project),
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                creationflags=CREATE_CONSOLE,
             )
         except OSError as error:
             QMessageBox.critical(self, "Could not open terminal", str(error))
@@ -1034,9 +1069,24 @@ class DevSuiteWindow(QMainWindow):
         if not main_file.is_file():
             QMessageBox.information(
                 self, "main.py not found",
-                f"No main.py file was found in this project:\\n{project}",
+                f"No main.py file was found in this project:\n{project}",
             )
             return
+
+        # Prefer uv run — it handles the project context and lockfile correctly.
+        uv_path = shutil.which("uv")
+        if uv_path and (project / "pyproject.toml").is_file():
+            try:
+                subprocess.Popen(
+                    [uv_path, "run", "python", str(main_file)],
+                    cwd=str(project),
+                    creationflags=CREATE_CONSOLE,
+                )
+                return
+            except OSError as error:
+                QMessageBox.critical(self, "Could not run project", str(error))
+                return
+
         python_executable = self.environment_python(project)
         if python_executable is None:
             QMessageBox.warning(
@@ -1049,7 +1099,7 @@ class DevSuiteWindow(QMainWindow):
             subprocess.Popen(
                 [str(python_executable), str(main_file)],
                 cwd=str(project),
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                creationflags=CREATE_CONSOLE,
             )
         except OSError as error:
             QMessageBox.critical(self, "Could not run project", str(error))
@@ -1060,13 +1110,25 @@ class DevSuiteWindow(QMainWindow):
             return
         python_executable = self.environment_python(project)
         if not python_executable:
-            QMessageBox.warning(self, "Environment not found", "The environment's Python executable is missing.")
+            QMessageBox.warning(self, "Environment not found",
+                                "The environment's Python executable is missing.")
             self.refresh_workspace_views()
             return
+
+        uv_path = shutil.which("uv")
+        if uv_path is None:
+            QMessageBox.warning(
+                self, "uv unavailable",
+                "uv was not found on PATH, so packages can't be inspected.\n"
+                f"Alternatively inspect manually:\n  {python_executable} -m pip list"
+            )
+            return
+
         try:
             result = subprocess.run(
-                [shutil.which("uv") or "uv", "pip", "list", "--python", str(python_executable)],
-                cwd=str(project), capture_output=True, text=True, timeout=60, check=False,
+                [uv_path, "pip", "list", "--python", str(python_executable)],
+                cwd=str(project), capture_output=True, text=True,
+                timeout=60, check=False,
             )
             output = (result.stdout or "").strip()
             if result.returncode != 0:
@@ -1132,36 +1194,10 @@ class DevSuiteWindow(QMainWindow):
             spacing = 14 if width < 1200 else 20
 
         self.content_layout.setContentsMargins(
-            horizontal_padding,
-            vertical_padding,
-            horizontal_padding,
-            vertical_padding,
+            horizontal_padding, vertical_padding,
+            horizontal_padding, vertical_padding,
         )
         self.content_layout.setSpacing(spacing)
-
-        # Keep workspace pages comfortable at normal window sizes too.
-        # Their margins adapt independently from the dashboard margins.
-        target_sidebar_width = max(200, min(250, int(width * 0.21)))
-        available_width = max(0, width - target_sidebar_width)
-        if available_width < 700:
-            page_horizontal = 14
-            page_vertical = 14
-            page_spacing = 10
-        elif available_width < 900:
-            page_horizontal = 20
-            page_vertical = 18
-            page_spacing = 12
-        else:
-            page_horizontal = 28
-            page_vertical = 24
-            page_spacing = 16
-
-        for page_layout in (self.projects_layout, self.environments_layout):
-            page_layout.setContentsMargins(
-                page_horizontal, page_vertical,
-                page_horizontal, page_vertical,
-            )
-            page_layout.setSpacing(page_spacing)
 
         self.sidebar.setFixedWidth(
             max(200, min(250, int(width * 0.21)))
@@ -1170,88 +1206,89 @@ class DevSuiteWindow(QMainWindow):
     def open_terminal(self):
         project_directory = Path(__file__).resolve().parent
 
-        # Prefer PowerShell 7, falling back to Windows PowerShell.
-        terminal = shutil.which("pwsh") or shutil.which("powershell")
-
-        if terminal is None:
-            QMessageBox.warning(
-                self,
-                "Terminal unavailable",
-                "PowerShell could not be found on this system.",
-            )
-            return
+        if os.name == "nt":
+            terminal = shutil.which("pwsh") or shutil.which("powershell")
+            if terminal is None:
+                QMessageBox.warning(
+                    self, "Terminal unavailable",
+                    "PowerShell could not be found on this system. Install it "
+                    "via Choco or winget, or download it from the browser and "
+                    "get it installed on your pc to use this feature.",
+                )
+                return
+            args = [terminal, "-NoExit"]
+        else:
+            terminal = shutil.which("x-terminal-emulator") or shutil.which(
+                "gnome-terminal"
+            ) or shutil.which("konsole") or shutil.which("xterm")
+            if terminal is None:
+                QMessageBox.warning(
+                    self, "Terminal unavailable",
+                    "No terminal emulator was found on this system.",
+                )
+                return
+            args = [terminal]
 
         try:
             subprocess.Popen(
-                [terminal, "-NoExit"],
+                args,
                 cwd=str(project_directory),
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                creationflags=CREATE_CONSOLE,
             )
         except OSError as error:
             QMessageBox.critical(
-                self,
-                "Could not open terminal",
-                f"PowerShell could not be started:\n{error}",
+                self, "Could not open terminal",
+                f"The terminal could not be started:\n{error}",
             )
 
     def open_settings(self):
         dialog = SettingsDialog(self)
 
         if dialog.exec_() == QDialog.Accepted:
-            self.interface_density = (
-                dialog.density_combo.currentText()
-            )
+            self.interface_density = dialog.density_combo.currentText()
+            self.settings.setValue("interface_density", self.interface_density)
             self.update_responsive_layout()
 
-    def open_package_advisor(self):
+
         dialog = PackageAdvisorDialog(self)
         if dialog.exec_() == QDialog.Accepted:
             self.recommended_packages = dialog.selected_packages()
             if not self.recommended_packages:
                 QMessageBox.information(
-                    self,
-                    "No packages selected",
+                    self, "No packages selected",
                     "No dependencies were selected. You can still create a clean Python project.",
                 )
             self.create_new_project()
 
-    def create_new_project(self):
+    def create_new_project(self, *_):
         dialog = NewProjectDialog(self)
 
         if dialog.exec_() != QDialog.Accepted:
             return
 
-        project_name, project_location = (
+        project_name, project_location, python_version = (
             dialog.get_project_details()
         )
 
-        # Validate the project name.
         if not project_name:
             QMessageBox.warning(
-                self,
-                "Project name required",
+                self, "Project name required",
                 "Please enter a name for your project.",
             )
             return
 
-        if not re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9_-]*",
-            project_name,
-        ):
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", project_name):
             QMessageBox.warning(
-                self,
-                "Invalid project name",
+                self, "Invalid project name",
                 "Use letters, numbers, underscores, or hyphens. "
                 "The name must begin with a letter or number.\n\n"
-                "Example: my_awesome_project",
+                "Example: Trixie's_work",
             )
             return
 
-        # Validate the destination.
         if not project_location:
             QMessageBox.warning(
-                self,
-                "Location required",
+                self, "Location required",
                 "Please choose a location for your project.",
             )
             return
@@ -1259,14 +1296,12 @@ class DevSuiteWindow(QMainWindow):
         parent_directory = Path(project_location).expanduser()
         project_directory = parent_directory / project_name
 
-        # Check the required tools.
         uv_executable = shutil.which("uv")
         git_executable = shutil.which("git")
 
         if uv_executable is None:
             QMessageBox.critical(
-                self,
-                "uv unavailable",
+                self, "uv unavailable",
                 "Could not find uv on PATH.\n"
                 "Please install uv or correct your PATH.",
             )
@@ -1274,30 +1309,26 @@ class DevSuiteWindow(QMainWindow):
 
         if git_executable is None:
             QMessageBox.critical(
-                self,
-                "Git unavailable",
+                self, "Git unavailable",
                 "Could not find Git on PATH.\n"
                 "Please install Git before creating a project.",
             )
             return
 
-        # Never overwrite an existing project.
         if project_directory.exists():
             QMessageBox.warning(
-                self,
-                "Project already exists",
+                self, "Project already exists",
                 f"This location already exists:\n\n"
                 f"{project_directory}\n\n"
                 "Choose another project name or location.",
             )
             return
 
-        # Confirm the operation before creating files.
         confirmation = QMessageBox.question(
-            self,
-            "Create Python Project",
+            self, "Create Python Project",
             f"Create project '{project_name}'?\n\n"
             f"Location:\n{project_directory}\n\n"
+            f"Python: {python_version}\n\n"
             "DevSuite will:\n"
             "• Initialize a Python application with uv\n"
             "• Create a Git repository\n"
@@ -1313,10 +1344,8 @@ class DevSuiteWindow(QMainWindow):
         selected_packages = list(self.recommended_packages)
         progress_dialog = ProjectSetupProgressDialog(project_name, self)
         worker = ProjectSetupWorker(
-            uv_executable,
-            project_directory,
-            project_name,
-            selected_packages,
+            uv_executable, project_directory, project_name,
+            selected_packages, python_version,
         )
         progress_dialog.worker = worker
         worker.progress.connect(progress_dialog.status_label.setText)
@@ -1330,9 +1359,12 @@ class DevSuiteWindow(QMainWindow):
             self.refresh_workspace_views()
 
             if result.get("success"):
+                deps_line = (
+                    "✓ Dependencies: " + ", ".join(selected_packages) + "\n\n"
+                    if selected_packages else "\n"
+                )
                 QMessageBox.information(
-                    self,
-                    "Project created successfully! 🎉",
+                    self, "Project created successfully! 🎉",
                     f"Your Python project is ready!\n\n"
                     f"Name: {project_name}\n\n"
                     f"Location:\n{project_directory}\n\n"
@@ -1342,15 +1374,15 @@ class DevSuiteWindow(QMainWindow):
                     "✓ Git repository\n"
                     "✓ Virtual environment\n"
                     "✓ uv.lock\n"
-                    + ("✓ Dependencies: " + ", ".join(selected_packages) + "\n\n"
-                       if selected_packages else "\n")
-                    + "Happy coding, buddy! 🐍",
+                    + deps_line
+                    + "Completed successfully! "
+                    "Happy coding, buddy! 🐍",
                 )
             else:
                 QMessageBox.warning(
-                    self,
-                    "Project setup needs attention",
-                    "DevSuite could not finish every setup step. The project may have been partially created.\n\n"
+                    self, "Project setup needs attention",
+                    "DevSuite™ could not finish every setup step. The project may "
+                    "have been partially created.\n\n"
                     f"Details: {result.get('error', 'Unknown setup error')}\n\n"
                     f"Project location:\n{project_directory}\n\n"
                     "Open the project folder and inspect the files before retrying. "
@@ -1361,11 +1393,13 @@ class DevSuiteWindow(QMainWindow):
         worker.completed.connect(lambda result: setattr(worker, "setup_result", result))
         worker.finished.connect(
             lambda: setup_finished(
-                worker.setup_result or {"success": False, "error": "Setup worker stopped unexpectedly."}
+                worker.setup_result
+                or {"success": False, "error": "Setup worker stopped unexpectedly."}
             )
         )
         worker.start()
         progress_dialog.exec_()
+
 
 def main():
     app = QApplication(sys.argv)
@@ -1378,4 +1412,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
