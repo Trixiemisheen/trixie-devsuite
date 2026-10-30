@@ -32,6 +32,9 @@ from PyQt5.QtWidgets import (
 )
 
 CREATE_CONSOLE = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+APP_ORG = "TrixieMisheen"
+APP_NAME = "DevSuite"
+DEFAULT_SEARCH_ROOTS_KEY = "project_search_roots"
 
 
 class SettingsDialog(QDialog):
@@ -39,7 +42,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
 
         self.setWindowTitle("DevSuite™ Settings")
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(460)
 
         self.setStyleSheet("""
             QDialog {
@@ -52,7 +55,7 @@ class SettingsDialog(QDialog):
                 font-size: 13px;
             }
 
-            QComboBox {
+            QComboBox, QLineEdit, QListWidget {
                 background-color: #202633;
                 color: #E6EDF3;
                 border: 1px solid #303849;
@@ -93,6 +96,35 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(self.density_combo)
 
+        # ---- Project search folders ----
+        folders_heading = QLabel("Project search folders")
+        folders_heading.setStyleSheet(
+            "font-size: 20px; font-weight: bold; color: #00E5FF;"
+        )
+        folders_heading.setContentsMargins(0, 12, 0, 0)
+        layout.addWidget(folders_heading)
+
+        layout.addWidget(QLabel(
+            "DevSuite discovers projects inside these folders "
+            "(and one level of subfolders)."
+        ))
+
+        self.folders_list = QListWidget()
+        self.folders_list.setMinimumHeight(120)
+        layout.addWidget(self.folders_list)
+
+        folder_row = QHBoxLayout()
+        self.folder_input = QLineEdit()
+        self.folder_input.setPlaceholderText("Add a folder to search for projects…")
+        add_button = QPushButton("Add")
+        add_button.clicked.connect(self.add_folder)
+        remove_button = QPushButton("Remove Selected")
+        remove_button.clicked.connect(self.remove_selected_folder)
+        folder_row.addWidget(self.folder_input, 1)
+        folder_row.addWidget(add_button)
+        folder_row.addWidget(remove_button)
+        layout.addLayout(folder_row)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.Save | QDialogButtonBox.Cancel
         )
@@ -102,12 +134,49 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(buttons)
 
+        if parent:
+            for folder in parent.project_search_roots:
+                self.folders_list.addItem(folder)
+
+    def add_folder(self):
+        folder = self.folder_input.text().strip()
+        if not folder:
+            folder = QFileDialog.getExistingDirectory(
+                self, "Choose a project folder"
+            )
+            folder = folder.strip() if folder else ""
+        if not folder:
+            return
+        path = str(Path(folder).expanduser().resolve())
+        existing = {
+            self.folders_list.item(i).text()
+            for i in range(self.folders_list.count())
+        }
+        if path not in existing:
+            self.folders_list.addItem(path)
+        self.folder_input.clear()
+
+    def remove_selected_folder(self):
+        for item in self.folders_list.selectedItems():
+            self.folders_list.takeItem(self.folders_list.row(item))
+
+    def get_settings(self):
+        return (
+            self.density_combo.currentText(),
+            [
+                self.folders_list.item(i).text()
+                for i in range(self.folders_list.count())
+            ],
+        )
+
 
 class NewProjectDialog(QDialog):
+    """Step 1 of the New Project flow: name, location, Python version."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("Create a New Python Project")
+        self.setWindowTitle("Create a New Python Project — Step 1 of 2")
         self.setMinimumWidth(480)
 
         self.setStyleSheet("""
@@ -140,26 +209,17 @@ class NewProjectDialog(QDialog):
                 background-color: #293548;
             }
         """)
-def set_packages_summary(self, packages):
-    summary = QLabel(f"📦 Will install: {', '.join(packages)}")
-    summary.setWordWrap(True)
-    summary.setStyleSheet("color: #00E5FF; font-size: 12px;")
-    # Insert above the buttons — access the layout via self.layout()
-    self.layout().insertWidget(self.layout().count() - 1, summary)def set_packages_summary(self, packages):
-    summary = QLabel(f"📦 Will install: {', '.join(packages)}")
-    summary.setWordWrap(True)
-    summary.setStyleSheet("color: #00E5FF; font-size: 12px;")
-    # Insert above the buttons — access the layout via self.layout()
-    self.layout().insertWidget(self.layout().count() - 1, summary)
+
         self.project_name = QLineEdit()
         self.project_name.setPlaceholderText(
             "e.g. my_awesome_project"
         )
 
         self.project_location = QLineEdit()
-        self.project_location.setText(
-            str(Path.home() / "Projects")
-        )
+        default_location = str(Path.home() / "Projects")
+        if parent and parent.project_search_roots:
+            default_location = parent.project_search_roots[0]
+        self.project_location.setText(default_location)
 
         browse_button = QPushButton("Browse...")
         browse_button.clicked.connect(self.browse_location)
@@ -181,7 +241,7 @@ def set_packages_summary(self, packages):
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel
         )
 
-        buttons.button(QDialogButtonBox.Ok).setText("Create Project")
+        buttons.button(QDialogButtonBox.Ok).setText("Next: Choose Packages")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
@@ -207,6 +267,12 @@ def set_packages_summary(self, packages):
             self.project_location.text().strip(),
             self.python_version.currentText(),
         )
+
+    def set_packages_summary(self, packages):
+        summary = QLabel(f"📦 Will install: {', '.join(packages)}")
+        summary.setWordWrap(True)
+        summary.setStyleSheet("color: #00E5FF; font-size: 12px;")
+        self.layout().insertWidget(self.layout().count() - 1, summary)
 
 
 PACKAGE_CATALOG = {
@@ -280,11 +346,11 @@ EXTRA_PACKAGES = {
 
 
 class PackageAdvisorDialog(QDialog):
-    """Rule-based, offline package recommendations for a new project."""
+    """Step 2 of the New Project flow: rule-based offline package picks."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("DevSuite™ Package Advisor")
+        self.setWindowTitle("DevSuite™ Package Advisor — Step 2 of 2")
         self.resize(760, 700)
         self.setMinimumSize(650, 560)
         self.package_checks = {}
@@ -372,19 +438,21 @@ class PackageAdvisorDialog(QDialog):
         layout.addWidget(note)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Cancel)
+        self.skip_button = buttons.addButton(
+            "Skip — No Packages", QDialogButtonBox.ActionRole
+        )
         self.continue_button = buttons.addButton(
-            "Continue to Create Project", QDialogButtonBox.AcceptRole
+            "Create Project", QDialogButtonBox.AcceptRole
         )
         self.continue_button.setObjectName("primary")
         buttons.rejected.connect(self.reject)
+        self.skip_button.clicked.connect(self.accept)
         self.continue_button.clicked.connect(self.accept)
         layout.addWidget(buttons)
 
         self.project_type.currentTextChanged.connect(self.refresh_recommendations)
         self.idea_input.returnPressed.connect(self.refresh_recommendations)
         self.refresh_recommendations()
-
-
 
     def refresh_recommendations(self, *_):
         while self.recommendation_layout.count():
@@ -437,16 +505,6 @@ class PackageAdvisorDialog(QDialog):
         self.recommendation_layout.addStretch()
 
     def selected_packages(self):
-        buttons = QDialogButtonBox(QDialogButtonBox.Cancel)
-        self.skip_button = buttons.addButton(
-            "Skip — No Packages", QDialogButtonBox.ActionRole
-            )
-        self.continue_button = buttons.addButton(
-            "Continue to Project Details", QDialogButtonBox.AcceptRole
-            )
-        self.continue_button.setObjectName("primary")
-        buttons.rejected.connect(self.reject)
-        self.skip_button.clicked.connect(self.accept)  # accepted with zero selections
         return [
             name for name, checkbox in self.package_checks.items()
             if checkbox.isChecked()
@@ -594,10 +652,11 @@ class DevSuiteWindow(QMainWindow):
         self.resize(1100, 700)
         self.setMinimumSize(900, 600)
 
-        self.settings = QSettings("TrixieMisheen", "DevSuite")
+        self.settings = QSettings(APP_ORG, APP_NAME)
         self.interface_density = self.settings.value(
             "interface_density", "Comfortable", str
         )
+        self.project_search_roots = self.load_search_roots()
         self.recommended_packages = []
 
         self.setStyleSheet("""
@@ -716,15 +775,12 @@ class DevSuiteWindow(QMainWindow):
         environments_nav = self.add_nav_button(sidebar_layout, "⚙   Environments")
         environments_nav.clicked.connect(self.show_environments)
 
-        packages_nav = self.add_nav_button(sidebar_layout, "◇   Package Advisor")
-        packages_nav.clicked.connect(self.open_package_advisor)
-
         sidebar_layout.addStretch()
 
         settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite™  •  v0.5.1")
+        version = QLabel("Trixie DevSuite™  •  v0.6.0")
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
         )
@@ -786,11 +842,6 @@ class DevSuiteWindow(QMainWindow):
         new_project_button.clicked.connect(self.create_new_project)
         self.content_layout.addWidget(new_project_button)
 
-        advisor_button = QPushButton("🧠   Recommend Packages for My Idea")
-        advisor_button.setMinimumHeight(45)
-        advisor_button.clicked.connect(self.open_package_advisor)
-        self.content_layout.addWidget(advisor_button)
-
         terminal_button = QPushButton(">_   Open Terminal")
         terminal_button.setMinimumHeight(45)
         terminal_button.clicked.connect(self.open_terminal)
@@ -815,6 +866,21 @@ class DevSuiteWindow(QMainWindow):
         self.refresh_workspace_views()
         self.update_responsive_layout()
 
+    # ---- Settings helpers ----
+
+    def load_search_roots(self):
+        raw = self.settings.value(DEFAULT_SEARCH_ROOTS_KEY)
+        if isinstance(raw, str):
+            raw = [raw]
+        roots = [str(item) for item in (raw or []) if str(item).strip()]
+        default_root = str(Path.home() / "Projects")
+        if default_root not in roots:
+            roots.append(default_root)
+        return roots
+
+    def save_search_roots(self):
+        self.settings.setValue(DEFAULT_SEARCH_ROOTS_KEY, self.project_search_roots)
+
     def build_projects_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -826,8 +892,8 @@ class DevSuiteWindow(QMainWindow):
         layout.addWidget(heading)
 
         subtitle = QLabel(
-            "Projects discovered in your DevSuite folder, its parent workspace, "
-            "and your personal Projects folder."
+            "Projects discovered in your configured search folders "
+            "(Settings → Project search folders)."
         )
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
@@ -850,6 +916,10 @@ class DevSuiteWindow(QMainWindow):
         open_folder_button = QPushButton("Open Folder")
         open_folder_button.clicked.connect(self.open_selected_project_folder)
         actions.addWidget(open_folder_button)
+
+        open_editor_button = QPushButton("Open in VS Code")
+        open_editor_button.clicked.connect(self.open_selected_project_in_editor)
+        actions.addWidget(open_editor_button)
 
         terminal_button = QPushButton(">_  Project Terminal")
         terminal_button.clicked.connect(self.open_selected_project_terminal)
@@ -904,15 +974,10 @@ class DevSuiteWindow(QMainWindow):
         return page
 
     def discover_projects(self):
-        """Discover projects in a small set of predictable workspace folders."""
-        app_directory = Path(__file__).resolve().parent
-        roots = [
-            app_directory,
-            app_directory.parent,
-            Path.home() / "Projects",
-        ]
+        """Discover projects inside the configured search roots (one level deep)."""
         projects = {}
-        for root in roots:
+        for root_text in self.project_search_roots:
+            root = Path(root_text).expanduser()
             try:
                 if not root.is_dir():
                     continue
@@ -937,9 +1002,8 @@ class DevSuiteWindow(QMainWindow):
     def environment_python(project):
         for folder_name in (".venv", "venv"):
             scripts = "Scripts" if os.name == "nt" else "bin"
-            candidate = project / folder_name / scripts / (
-                "python.exe" if os.name == "nt" else "python"
-            )
+            executable = "python.exe" if os.name == "nt" else "python"
+            candidate = project / folder_name / scripts / executable
             if candidate.is_file():
                 return candidate
         return None
@@ -1020,19 +1084,48 @@ class DevSuiteWindow(QMainWindow):
             return None
         return project
 
+    def open_path_in_file_manager(self, path):
+        try:
+            if os.name == "nt":
+                subprocess.Popen(["explorer", str(path)])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(path)])
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except OSError as error:
+            QMessageBox.critical(self, "Could not open folder", str(error))
+
     def open_selected_project_folder(self):
+        project = self.selected_project_path(self.projects_list)
+        if project:
+            self.open_path_in_file_manager(project)
+
+    def open_selected_project_in_editor(self):
         project = self.selected_project_path(self.projects_list)
         if not project:
             return
+        editor = shutil.which("code")
+        if editor is None:
+            QMessageBox.warning(
+                self, "VS Code unavailable",
+                "The 'code' command was not found on PATH.\n"
+                "Install VS Code and enable 'Add to PATH' during setup.",
+            )
+            return
         try:
-            if os.name == "nt":
-                subprocess.Popen(["explorer", str(project)])
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", str(project)])
-            else:
-                subprocess.Popen(["xdg-open", str(project)])
+            subprocess.Popen([editor, str(project)])
         except OSError as error:
-            QMessageBox.critical(self, "Could not open folder", str(error))
+            QMessageBox.critical(self, "Could not open editor", str(error))
+
+    def launch_terminal(self, args, working_directory):
+        try:
+            subprocess.Popen(
+                args,
+                cwd=str(working_directory),
+                creationflags=CREATE_CONSOLE,
+            )
+        except OSError as error:
+            QMessageBox.critical(self, "Could not open terminal", str(error))
 
     def open_project_terminal(self, project, activate_environment=False):
         if os.name == "nt":
@@ -1053,9 +1146,12 @@ class DevSuiteWindow(QMainWindow):
                 if command else [terminal, "-NoExit"]
             )
         else:
-            terminal = shutil.which("x-terminal-emulator") or shutil.which(
-                "gnome-terminal"
-            ) or shutil.which("konsole") or shutil.which("xterm")
+            terminal = (
+                shutil.which("x-terminal-emulator")
+                or shutil.which("gnome-terminal")
+                or shutil.which("konsole")
+                or shutil.which("xterm")
+            )
             if not terminal:
                 QMessageBox.warning(
                     self, "Terminal unavailable",
@@ -1064,14 +1160,7 @@ class DevSuiteWindow(QMainWindow):
                 return
             args = [terminal]
 
-        try:
-            subprocess.Popen(
-                args,
-                cwd=str(project),
-                creationflags=CREATE_CONSOLE,
-            )
-        except OSError as error:
-            QMessageBox.critical(self, "Could not open terminal", str(error))
+        self.launch_terminal(args, project)
 
     def open_selected_project_terminal(self):
         project = self.selected_project_path(self.projects_list)
@@ -1226,7 +1315,7 @@ class DevSuiteWindow(QMainWindow):
         )
 
     def open_terminal(self):
-        project_directory = Path(__file__).resolve().parent
+        working_directory = Path(__file__).resolve().parent
 
         if os.name == "nt":
             terminal = shutil.which("pwsh") or shutil.which("powershell")
@@ -1240,9 +1329,12 @@ class DevSuiteWindow(QMainWindow):
                 return
             args = [terminal, "-NoExit"]
         else:
-            terminal = shutil.which("x-terminal-emulator") or shutil.which(
-                "gnome-terminal"
-            ) or shutil.which("konsole") or shutil.which("xterm")
+            terminal = (
+                shutil.which("x-terminal-emulator")
+                or shutil.which("gnome-terminal")
+                or shutil.which("konsole")
+                or shutil.which("xterm")
+            )
             if terminal is None:
                 QMessageBox.warning(
                     self, "Terminal unavailable",
@@ -1251,50 +1343,24 @@ class DevSuiteWindow(QMainWindow):
                 return
             args = [terminal]
 
-        try:
-            subprocess.Popen(
-                args,
-                cwd=str(project_directory),
-                creationflags=CREATE_CONSOLE,
-            )
-        except OSError as error:
-            QMessageBox.critical(
-                self, "Could not open terminal",
-                f"The terminal could not be started:\n{error}",
-            )
+        self.launch_terminal(args, working_directory)
 
     def open_settings(self):
         dialog = SettingsDialog(self)
 
         if dialog.exec_() == QDialog.Accepted:
-            self.interface_density = dialog.density_combo.currentText()
+            self.interface_density, self.project_search_roots = (
+                dialog.get_settings()
+            )
             self.settings.setValue("interface_density", self.interface_density)
+            self.save_search_roots()
             self.update_responsive_layout()
-    def create_new_project(self, *_):
-        """Step 1: Package advisor (skippable) → Step 2: project details."""
-        advisor = PackageAdvisorDialog(self)
-        if advisor.exec_() == QDialog.Accepted:
-            self.recommended_packages = advisor.selected_packages()
-        else:
-            # User skipped or cancelled the advisor — continue with no packages
-            # only if they pressed "Skip", abort if they cancelled outright.
-            if advisor.result() == QDialog.Rejected:
-                return
-             self.recommended_packages = []
-
-        dialog = NewProjectDialog(self)
-        # Show a reminder of what will be installed
-        if self.recommended_packages:
-            dialog.set_packages_summary(self.recommended_packages)
-
-        if dialog.exec_() != QDialog.Accepted:
-            return
-        # ... everything from "project_name, project_location, python_version = ..."
-        # onwards stays exactly as in the last version.
+            self.refresh_workspace_views()
 
     def create_new_project(self, *_):
+        """Two-step wizard: details → package advisor → confirm → create."""
+        # ---- Step 1: project details ----
         dialog = NewProjectDialog(self)
-
         if dialog.exec_() != QDialog.Accepted:
             return
 
@@ -1356,6 +1422,17 @@ class DevSuiteWindow(QMainWindow):
             )
             return
 
+        # ---- Step 2: package advisor (skippable) ----
+        advisor = PackageAdvisorDialog(self)
+        if advisor.exec_() == QDialog.Accepted:
+            self.recommended_packages = advisor.selected_packages()
+        else:
+            # Cancelled the wizard outright — stop without creating anything.
+            return
+
+        selected_packages = list(self.recommended_packages)
+
+        # ---- Step 3: confirm and create ----
         confirmation = QMessageBox.question(
             self, "Create Python Project",
             f"Create project '{project_name}'?\n\n"
@@ -1365,7 +1442,11 @@ class DevSuiteWindow(QMainWindow):
             "• Initialize a Python application with uv\n"
             "• Create a Git repository\n"
             "• Create a virtual environment\n"
-            "• Generate the initial project files",
+            "• Generate the initial project files"
+            + (
+                f"\n• Install: {', '.join(selected_packages)}"
+                if selected_packages else ""
+            ),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
         )
@@ -1373,7 +1454,6 @@ class DevSuiteWindow(QMainWindow):
         if confirmation != QMessageBox.Yes:
             return
 
-        selected_packages = list(self.recommended_packages)
         progress_dialog = ProjectSetupProgressDialog(project_name, self)
         worker = ProjectSetupWorker(
             uv_executable, project_directory, project_name,
