@@ -41,7 +41,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("DevSuite™ Settings")
+        self.setWindowTitle("DevSuite Settings")
         self.setMinimumWidth(460)
 
         self.setStyleSheet("""
@@ -212,7 +212,7 @@ class NewProjectDialog(QDialog):
 
         self.project_name = QLineEdit()
         self.project_name.setPlaceholderText(
-            "e.g. my_awesome_project"
+            "e.g. trixie's_project"
         )
 
         self.project_location = QLineEdit()
