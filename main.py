@@ -780,7 +780,7 @@ class DevSuiteWindow(QMainWindow):
         settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite™  •  v0.6.0")
+        version = QLabel("Trixie DevSuite • v0.6.0")
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
         )
@@ -805,7 +805,7 @@ class DevSuiteWindow(QMainWindow):
         subtitle.setObjectName("subtitle")
         self.content_layout.addWidget(subtitle)
 
-        welcome = QLabel("Welcome back, Trixie! 🐍")
+        welcome = QLabel("Welcome back, Dev! 🐍")
         welcome.setStyleSheet(
             "font-size: 19px; font-weight: bold; padding-top: 12px;"
         )
