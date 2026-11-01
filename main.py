@@ -6,7 +6,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from PyQt5.QtCore import QSettings, QThread, pyqtSignal
+from PyQt5.QtCore import QSettings, QThread, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
     QApplication,
@@ -130,6 +130,35 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(self.density_combo)
 
+        project_heading = QLabel("Project defaults")
+        project_heading.setStyleSheet(
+            "font-size: 20px; font-weight: bold; color: #00E5FF;"
+        )
+        layout.addWidget(project_heading)
+
+        layout.addWidget(QLabel("Default project location"))
+        self.project_location_input = QLineEdit()
+        self.project_location_input.setText(
+            parent.default_project_location if parent else str(Path.home() / "Projects")
+        )
+        self.project_location_input.setPlaceholderText("e.g. C:\\Users\\You\\Projects")
+        layout.addWidget(self.project_location_input)
+
+        layout.addWidget(QLabel("Default Python version"))
+        self.python_version_combo = QComboBox()
+        self.python_version_combo.addItems(["3.12", "3.13", "3.14"])
+        if parent:
+            self.python_version_combo.setCurrentText(parent.default_python_version)
+        layout.addWidget(self.python_version_combo)
+
+        self.auto_refresh_checkbox = QCheckBox(
+            "Refresh projects automatically every 30 seconds"
+        )
+        self.auto_refresh_checkbox.setChecked(
+            parent.auto_refresh_projects if parent else True
+        )
+        layout.addWidget(self.auto_refresh_checkbox)
+
         # ---- Project search folders ----
         folders_heading = QLabel("Project search folders")
         folders_heading.setStyleSheet(
@@ -158,6 +187,14 @@ class SettingsDialog(QDialog):
         folder_row.addWidget(add_button)
         folder_row.addWidget(remove_button)
         layout.addLayout(folder_row)
+
+        tools_button = QPushButton("Check tool status")
+        tools_button.clicked.connect(self.check_tool_status)
+        layout.addWidget(tools_button)
+
+        reset_button = QPushButton("Reset settings to defaults")
+        reset_button.clicked.connect(self.reset_defaults)
+        layout.addWidget(reset_button)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Save | QDialogButtonBox.Cancel
@@ -197,11 +234,36 @@ class SettingsDialog(QDialog):
     def get_settings(self):
         return (
             self.density_combo.currentText(),
+            self.project_location_input.text().strip(),
+            self.python_version_combo.currentText(),
+            self.auto_refresh_checkbox.isChecked(),
             [
                 self.folders_list.item(i).text()
                 for i in range(self.folders_list.count())
             ],
         )
+
+    def reset_defaults(self):
+        self.density_combo.setCurrentText("Comfortable")
+        self.project_location_input.setText(str(Path.home() / "Projects"))
+        self.python_version_combo.setCurrentText("3.13")
+        self.auto_refresh_checkbox.setChecked(True)
+        self.folders_list.clear()
+        self.folders_list.addItem(str(Path.home() / "Projects"))
+
+    def check_tool_status(self):
+        tools = {
+            "Python": sys.executable,
+            "uv": shutil.which("uv"),
+            "Git": shutil.which("git"),
+            "VS Code": shutil.which("code"),
+            "PowerShell": shutil.which("pwsh") or shutil.which("powershell"),
+        }
+        lines = [
+            f"{name}: {'Available — ' + path if path else 'Not found on PATH'}"
+            for name, path in tools.items()
+        ]
+        QMessageBox.information(self, "Tool status", "\n".join(lines))
 
 
 class NewProjectDialog(QDialog):
@@ -251,8 +313,8 @@ class NewProjectDialog(QDialog):
 
         self.project_location = QLineEdit()
         default_location = str(Path.home() / "Projects")
-        if parent and parent.project_search_roots:
-            default_location = parent.project_search_roots[0]
+        if parent:
+            default_location = parent.default_project_location
         self.project_location.setText(default_location)
 
         browse_button = QPushButton("Browse...")
@@ -264,7 +326,9 @@ class NewProjectDialog(QDialog):
 
         self.python_version = QComboBox()
         self.python_version.addItems(["3.12", "3.13", "3.14"])
-        self.python_version.setCurrentText("3.13")
+        self.python_version.setCurrentText(
+            parent.default_python_version if parent else "3.13"
+        )
 
         form_layout = QFormLayout()
         form_layout.addRow("Project name:", self.project_name)
@@ -751,6 +815,20 @@ class DevSuiteWindow(QMainWindow):
         )
         self.project_search_roots = self.load_search_roots()
         self.recommended_packages = []
+        self.default_project_location = self.settings.value(
+            "default_project_location", str(Path.home() / "Projects"), str
+        )
+        self.default_python_version = self.settings.value(
+            "default_python_version", "3.13", str
+        )
+        self.auto_refresh_projects = self.settings.value(
+            "auto_refresh_projects", True, bool
+        )
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.setInterval(30_000)
+        self.refresh_timer.timeout.connect(self.refresh_workspace_views)
+        if self.auto_refresh_projects:
+            self.refresh_timer.start()
 
         self.setStyleSheet("""
             QMainWindow, QWidget {
@@ -1606,10 +1684,29 @@ class DevSuiteWindow(QMainWindow):
         dialog = SettingsDialog(self)
 
         if dialog.exec_() == QDialog.Accepted:
-            self.interface_density, self.project_search_roots = (
+            (
+                self.interface_density,
+                self.default_project_location,
+                self.default_python_version,
+                self.auto_refresh_projects,
+                self.project_search_roots,
+            ) = (
                 dialog.get_settings()
             )
             self.settings.setValue("interface_density", self.interface_density)
+            self.settings.setValue(
+                "default_project_location", self.default_project_location
+            )
+            self.settings.setValue(
+                "default_python_version", self.default_python_version
+            )
+            self.settings.setValue(
+                "auto_refresh_projects", self.auto_refresh_projects
+            )
+            if self.auto_refresh_projects:
+                self.refresh_timer.start()
+            else:
+                self.refresh_timer.stop()
             self.save_search_roots()
             self.update_responsive_layout()
             self.refresh_workspace_views()
