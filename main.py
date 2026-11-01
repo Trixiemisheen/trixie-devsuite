@@ -908,6 +908,8 @@ class DevSuiteWindow(QMainWindow):
         )
         self.project_search_roots = self.load_search_roots()
         self.recommended_packages = []
+        self.favorite_projects = self.load_project_paths("favorite_projects")
+        self.recent_projects = self.load_project_paths("recent_projects")
         self.default_project_location = self.settings.value(
             "default_project_location", str(Path.home() / "Projects"), str
         )
@@ -1188,6 +1190,17 @@ class DevSuiteWindow(QMainWindow):
         terminal_button.clicked.connect(self.open_terminal)
         self.content_layout.addWidget(terminal_button)
 
+        project_lists = QHBoxLayout()
+        self.favorites_list = self.build_project_shortlist(
+            "PINNED PROJECTS", self.favorite_projects
+        )
+        self.recent_list = self.build_project_shortlist(
+            "RECENT PROJECTS", self.recent_projects
+        )
+        project_lists.addWidget(self.favorites_list)
+        project_lists.addWidget(self.recent_list)
+        self.content_layout.addLayout(project_lists)
+
         self.content_layout.addStretch()
 
         footer = QLabel("TRIXIE MISHEEN™  •  BUILT WITH PYTHON & PyQt5")
@@ -1226,6 +1239,94 @@ class DevSuiteWindow(QMainWindow):
 
     def save_search_roots(self):
         self.settings.setValue(SEARCH_ROOTS_KEY, self.project_search_roots)
+
+    def load_project_paths(self, key):
+        stored = self.settings.value(key, [])
+        if isinstance(stored, str):
+            stored = [stored]
+        return [
+            str(Path(path))
+            for path in (stored or [])
+            if str(path).strip() and Path(path).is_dir()
+        ]
+
+    def save_project_paths(self):
+        self.settings.setValue("favorite_projects", self.favorite_projects)
+        self.settings.setValue("recent_projects", self.recent_projects)
+
+    def build_project_shortlist(self, title, paths):
+        container = QFrame()
+        container.setObjectName("card")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(14, 12, 14, 12)
+        label = QLabel(title)
+        label.setObjectName("card_title")
+        layout.addWidget(label)
+        project_list = QListWidget()
+        project_list.setMaximumHeight(120)
+        project_list.setStyleSheet(
+            "QListWidget { background-color: #151821; border: none; }"
+            "QListWidget::item { padding: 6px; }"
+            "QListWidget::item:selected { background-color: #164653; }"
+        )
+        for path in paths:
+            item = QListWidgetItem(Path(path).name)
+            item.setData(256, path)
+            project_list.addItem(item)
+        if not paths:
+            empty = QListWidgetItem("No projects yet")
+            empty.setFlags(empty.flags() & ~empty.ItemIsSelectable)
+            project_list.addItem(empty)
+        project_list.itemDoubleClicked.connect(self.open_shortlist_project)
+        layout.addWidget(project_list)
+        container.project_list = project_list
+        return container
+
+    def refresh_project_shortlists(self):
+        for widget, paths in (
+            (self.favorites_list, self.favorite_projects),
+            (self.recent_list, self.recent_projects),
+        ):
+            widget.project_list.clear()
+            for path in paths:
+                item = QListWidgetItem(Path(path).name)
+                item.setData(256, path)
+                widget.project_list.addItem(item)
+            if not paths:
+                empty = QListWidgetItem("No projects yet")
+                empty.setFlags(empty.flags() & ~empty.ItemIsSelectable)
+                widget.project_list.addItem(empty)
+
+    def open_shortlist_project(self, item):
+        project = Path(item.data(256))
+        if project.is_dir():
+            self.record_recent_project(project)
+            self.open_path_in_file_manager(project)
+        else:
+            self.refresh_workspace_views()
+
+    def record_recent_project(self, project):
+        path = str(Path(project).resolve())
+        self.recent_projects = [
+            existing for existing in self.recent_projects if existing != path
+        ]
+        self.recent_projects.insert(0, path)
+        self.recent_projects = self.recent_projects[:8]
+        self.save_project_paths()
+        self.refresh_project_shortlists()
+
+    def toggle_selected_favorite(self):
+        project = self.selected_project_path(self.projects_list)
+        if not project:
+            return
+        path = str(project.resolve())
+        if path in self.favorite_projects:
+            self.favorite_projects.remove(path)
+        else:
+            self.favorite_projects.insert(0, path)
+            self.favorite_projects = self.favorite_projects[:8]
+        self.save_project_paths()
+        self.refresh_project_shortlists()
 
     def build_projects_page(self):
         page = QWidget()
@@ -1278,6 +1379,9 @@ class DevSuiteWindow(QMainWindow):
         run_button = QPushButton("▶  Run main.py")
         run_button.clicked.connect(self.run_selected_project)
         actions.addWidget(run_button)
+        pin_button = QPushButton("☆  Pin / Unpin")
+        pin_button.clicked.connect(self.toggle_selected_favorite)
+        actions.addWidget(pin_button)
         layout.addLayout(actions)
         return page
 
@@ -1429,6 +1533,14 @@ class DevSuiteWindow(QMainWindow):
 
     def refresh_workspace_views(self, *_):
         projects = self.discover_projects()
+        self.favorite_projects = [
+            path for path in self.favorite_projects if Path(path).is_dir()
+        ]
+        self.recent_projects = [
+            path for path in self.recent_projects if Path(path).is_dir()
+        ]
+        self.save_project_paths()
+        self.refresh_project_shortlists()
         self.projects_list.clear()
         self.environments_list.clear()
         environment_count = 0
@@ -1510,6 +1622,7 @@ class DevSuiteWindow(QMainWindow):
             QMessageBox.warning(self, "Project not found", f"This folder no longer exists:\n{project}")
             self.refresh_workspace_views()
             return None
+        self.record_recent_project(project)
         return project
 
     def open_path_in_file_manager(self, path):
