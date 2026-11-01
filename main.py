@@ -830,6 +830,80 @@ class DevSuiteWindow(QMainWindow):
             QPushButton#primary:hover {
                 background-color: #00E5FF;
             }
+
+            QFrame#help_hero {
+                background-color: #182B3D;
+                border: 1px solid #24506A;
+                border-radius: 14px;
+            }
+
+            QLabel#help_kicker {
+                color: #7DEBFF;
+                font-size: 11px;
+                font-weight: bold;
+                letter-spacing: 1px;
+            }
+
+            QLabel#help_title {
+                color: #F4FBFF;
+                font-size: 25px;
+                font-weight: bold;
+            }
+
+            QLabel#help_subtitle {
+                color: #A9C6D4;
+                font-size: 13px;
+            }
+
+            QLineEdit#help_search {
+                background-color: #202633;
+                border: 1px solid #3B5265;
+                border-radius: 9px;
+                color: #F4FBFF;
+                padding: 11px 14px;
+                selection-background-color: #146A80;
+            }
+
+            QLineEdit#help_search:focus {
+                border: 1px solid #00B8D4;
+            }
+
+            QListWidget#help_topics {
+                background-color: #111A24;
+                border: 1px solid #2B3C4B;
+                border-radius: 10px;
+                padding: 8px;
+                outline: none;
+            }
+
+            QListWidget#help_topics::item {
+                color: #AFC1CC;
+                border-radius: 7px;
+                padding: 11px 12px;
+                margin: 2px 0;
+            }
+
+            QListWidget#help_topics::item:hover {
+                background-color: #1D3444;
+                color: #F4FBFF;
+            }
+
+            QListWidget#help_topics::item:selected {
+                background-color: #0B687E;
+                color: #FFFFFF;
+                font-weight: bold;
+            }
+
+            QPlainTextEdit#help_article {
+                background-color: #1B222E;
+                border: 1px solid #303849;
+                border-radius: 10px;
+                color: #DCEAF1;
+                font-size: 14px;
+                line-height: 150%;
+                padding: 18px;
+                selection-background-color: #146A80;
+            }
         """)
 
         central = QWidget()
@@ -1086,27 +1160,41 @@ class DevSuiteWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(32, 28, 32, 28)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
+
+        hero = QFrame()
+        hero.setObjectName("help_hero")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(20, 16, 20, 16)
+        hero_layout.setSpacing(5)
+
+        kicker = QLabel("TRIXIE DEVSUITE  /  KNOWLEDGE BASE")
+        kicker.setObjectName("help_kicker")
+        hero_layout.addWidget(kicker)
 
         heading = QLabel("Help & Manual")
-        heading.setObjectName("heading")
-        layout.addWidget(heading)
+        heading.setObjectName("help_title")
+        hero_layout.addWidget(heading)
 
         subtitle = QLabel(
-            "Search the offline manual or choose a topic. Press Ctrl+H from anywhere."
+            "Everything you need to create, discover, and run Python projects."
         )
-        subtitle.setObjectName("subtitle")
+        subtitle.setObjectName("help_subtitle")
         subtitle.setWordWrap(True)
-        layout.addWidget(subtitle)
+        hero_layout.addWidget(subtitle)
+        layout.addWidget(hero)
 
         search = QLineEdit()
+        search.setObjectName("help_search")
         search.setPlaceholderText("Search help topics...")
         layout.addWidget(search)
 
         content_layout = QHBoxLayout()
         self.help_topics_list = QListWidget()
+        self.help_topics_list.setObjectName("help_topics")
         self.help_topics_list.setMinimumWidth(190)
         self.help_article = QPlainTextEdit()
+        self.help_article.setObjectName("help_article")
         self.help_article.setReadOnly(True)
         self.help_article.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         content_layout.addWidget(self.help_topics_list)
