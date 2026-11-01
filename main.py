@@ -6,7 +6,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from PyQt5.QtCore import QSettings, QThread, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QSettings, QThread, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
     QApplication,
@@ -76,7 +76,8 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
 
         self.setWindowTitle("DevSuite Settings")
-        self.setMinimumWidth(460)
+        self.setMinimumSize(440, 480)
+        self.resize(520, 620)
 
         self.setStyleSheet("""
             QDialog {
@@ -97,6 +98,33 @@ class SettingsDialog(QDialog):
                 padding: 8px;
             }
 
+            QScrollArea {
+                background-color: #151821;
+                border: 1px solid #303849;
+                border-radius: 8px;
+            }
+
+            QScrollBar:vertical {
+                background-color: #151821;
+                width: 10px;
+                margin: 4px;
+            }
+
+            QScrollBar::handle:vertical {
+                background-color: #3B5265;
+                border-radius: 5px;
+                min-height: 28px;
+            }
+
+            QScrollBar::handle:vertical:hover {
+                background-color: #00B8D4;
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+
             QPushButton {
                 background-color: #202633;
                 color: #E6EDF3;
@@ -111,16 +139,26 @@ class SettingsDialog(QDialog):
         """)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_content = QWidget()
+        settings_layout = QVBoxLayout(scroll_content)
+        settings_layout.setSpacing(12)
+        settings_layout.setContentsMargins(14, 14, 14, 14)
+        scroll_area.setWidget(scroll_content)
+        layout.addWidget(scroll_area, 1)
 
         heading = QLabel("Appearance")
         heading.setStyleSheet(
             "font-size: 20px; font-weight: bold; color: #00E5FF;"
         )
-        layout.addWidget(heading)
+        settings_layout.addWidget(heading)
 
-        layout.addWidget(QLabel("Interface density"))
+        settings_layout.addWidget(QLabel("Interface density"))
 
         self.density_combo = QComboBox()
         self.density_combo.addItems(["Comfortable", "Compact"])
@@ -128,28 +166,28 @@ class SettingsDialog(QDialog):
         if parent:
             self.density_combo.setCurrentText(parent.interface_density)
 
-        layout.addWidget(self.density_combo)
+        settings_layout.addWidget(self.density_combo)
 
         project_heading = QLabel("Project defaults")
         project_heading.setStyleSheet(
             "font-size: 20px; font-weight: bold; color: #00E5FF;"
         )
-        layout.addWidget(project_heading)
+        settings_layout.addWidget(project_heading)
 
-        layout.addWidget(QLabel("Default project location"))
+        settings_layout.addWidget(QLabel("Default project location"))
         self.project_location_input = QLineEdit()
         self.project_location_input.setText(
             parent.default_project_location if parent else str(Path.home() / "Projects")
         )
         self.project_location_input.setPlaceholderText("e.g. C:\\Users\\You\\Projects")
-        layout.addWidget(self.project_location_input)
+        settings_layout.addWidget(self.project_location_input)
 
-        layout.addWidget(QLabel("Default Python version"))
+        settings_layout.addWidget(QLabel("Default Python version"))
         self.python_version_combo = QComboBox()
         self.python_version_combo.addItems(["3.12", "3.13", "3.14"])
         if parent:
             self.python_version_combo.setCurrentText(parent.default_python_version)
-        layout.addWidget(self.python_version_combo)
+        settings_layout.addWidget(self.python_version_combo)
 
         self.auto_refresh_checkbox = QCheckBox(
             "Refresh projects automatically every 30 seconds"
@@ -157,7 +195,7 @@ class SettingsDialog(QDialog):
         self.auto_refresh_checkbox.setChecked(
             parent.auto_refresh_projects if parent else True
         )
-        layout.addWidget(self.auto_refresh_checkbox)
+        settings_layout.addWidget(self.auto_refresh_checkbox)
 
         # ---- Project search folders ----
         folders_heading = QLabel("Project search folders")
@@ -165,16 +203,16 @@ class SettingsDialog(QDialog):
             "font-size: 20px; font-weight: bold; color: #00E5FF;"
         )
         folders_heading.setContentsMargins(0, 12, 0, 0)
-        layout.addWidget(folders_heading)
+        settings_layout.addWidget(folders_heading)
 
-        layout.addWidget(QLabel(
+        settings_layout.addWidget(QLabel(
             "DevSuite discovers projects inside these folders "
             "(and one level of subfolders)."
         ))
 
         self.folders_list = QListWidget()
         self.folders_list.setMinimumHeight(120)
-        layout.addWidget(self.folders_list)
+        settings_layout.addWidget(self.folders_list)
 
         folder_row = QHBoxLayout()
         self.folder_input = QLineEdit()
@@ -186,15 +224,15 @@ class SettingsDialog(QDialog):
         folder_row.addWidget(self.folder_input, 1)
         folder_row.addWidget(add_button)
         folder_row.addWidget(remove_button)
-        layout.addLayout(folder_row)
+        settings_layout.addLayout(folder_row)
 
         tools_button = QPushButton("Check tool status")
         tools_button.clicked.connect(self.check_tool_status)
-        layout.addWidget(tools_button)
+        settings_layout.addWidget(tools_button)
 
         reset_button = QPushButton("Reset settings to defaults")
         reset_button.clicked.connect(self.reset_defaults)
-        layout.addWidget(reset_button)
+        settings_layout.addWidget(reset_button)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Save | QDialogButtonBox.Cancel
