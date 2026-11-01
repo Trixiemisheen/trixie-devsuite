@@ -428,8 +428,8 @@ HELP_TOPICS = {
         "• Terminal unavailable: install PowerShell or a supported terminal.\n\n"
         "The setup progress window shows command output and failure details."
     ),
-    "About": (
-        "About Trixie DevSuite\n\n"
+    "FYI": (
+        "For your information about Trixie DevSuite\n\n"
         "Trixie DevSuite is an online / offline-first Python workspace built with "
         "Python and PyQt5. Package recommendations are rule-based and do not "
         "send your project idea to an online service.\n\n"
