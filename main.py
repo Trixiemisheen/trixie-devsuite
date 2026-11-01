@@ -1,9 +1,9 @@
 import os
 import re
-import tomllib
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 from PyQt5.QtCore import QSettings, QThread, pyqtSignal
@@ -35,8 +35,38 @@ from PyQt5.QtWidgets import (
 CREATE_CONSOLE = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
 APP_ORG = "TrixieMisheen"
 APP_NAME = "DevSuite"
-DEFAULT_SEARCH_ROOTS_KEY = "project_search_roots"
+SEARCH_ROOTS_KEY = "project_search_roots"
 
+
+def read_project_metadata(project_path):
+    """Extract dependency names and script entry-points from pyproject.toml."""
+    pyproject = Path(project_path) / "pyproject.toml"
+    dependencies = []
+    scripts = {}
+    try:
+        with open(pyproject, "rb") as handle:
+            data = tomllib.load(handle)
+        project_table = data.get("project", {})
+        dependencies = list(project_table.get("dependencies") or [])
+        scripts = dict(project_table.get("scripts") or {})
+    except (OSError, ValueError):
+        pass
+    return dependencies, scripts
+
+
+def git_current_branch(project_path):
+    """Return the current git branch name, or None."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(project_path), capture_output=True, text=True,
+            timeout=5, check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
@@ -643,7 +673,6 @@ class ProjectSetupProgressDialog(QDialog):
             self.request_cancel()
             return
         super().closeEvent(event)
-
 
 
 class DevSuiteWindow(QMainWindow):
