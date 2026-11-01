@@ -9,6 +9,7 @@ assistant.
 
 - Create Python application projects with Python 3.12, 3.13, or 3.14.
 - Initialize projects with Git, a `pyproject.toml`, and a virtual environment.
+- Start projects from Basic Python, CLI, PyQt, FastAPI, or data science templates.
 - Choose packages from recommendations based on the project type and idea.
 - Discover projects in configured folders and one level of subfolders.
 - Open project folders, terminals, or projects in VS Code.
@@ -60,9 +61,10 @@ python main.py
 
 1. Select **New Project** or **Create a New Python Project**.
 2. Enter a project name and choose its location and Python version.
-3. Select a project type and optionally describe the project idea.
-4. Review the package recommendations.
-5. Select **Create Project**.
+3. Choose a starter template.
+4. Select a project type and optionally describe the project idea.
+5. Review the package recommendations.
+6. Select **Create Project**.
 
 DevSuite uses `uv init`, `uv sync`, and `uv add` during setup. Make sure `uv`
 is installed and available on `PATH` before creating a project.

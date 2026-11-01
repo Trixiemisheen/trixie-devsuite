@@ -368,10 +368,20 @@ class NewProjectDialog(QDialog):
             parent.default_python_version if parent else "3.13"
         )
 
+        self.template = QComboBox()
+        self.template.addItems([
+            "Basic Python application",
+            "Command-line tool",
+            "PyQt desktop application",
+            "FastAPI web API",
+            "Data science project",
+        ])
+
         form_layout = QFormLayout()
         form_layout.addRow("Project name:", self.project_name)
         form_layout.addRow("Project location:", location_layout)
         form_layout.addRow("Python version:", self.python_version)
+        form_layout.addRow("Project template:", self.template)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel
@@ -402,6 +412,7 @@ class NewProjectDialog(QDialog):
             self.project_name.text().strip(),
             self.project_location.text().strip(),
             self.python_version.currentText(),
+            self.template.currentText(),
         )
 
     def set_packages_summary(self, packages):
@@ -478,6 +489,29 @@ IDEA_KEYWORDS = {
 
 EXTRA_PACKAGES = {
     "yt-dlp": ("Download media from supported websites using yt-dlp's command-line library.", "Optional"),
+}
+
+PROJECT_TEMPLATES = {
+    "Basic Python application": {
+        "main.py": 'def main():\n    print("Hello from your new project!")\n\n\nif __name__ == "__main__":\n    main()\n',
+        "tests/test_main.py": "def test_project_starts():\n    assert True\n",
+    },
+    "Command-line tool": {
+        "main.py": 'import argparse\n\n\ndef main():\n    parser = argparse.ArgumentParser(description="A new command-line tool.")\n    parser.add_argument("name", nargs="?", default="world")\n    args = parser.parse_args()\n    print(f"Hello, {args.name}!")\n\n\nif __name__ == "__main__":\n    main()\n',
+        "tests/test_main.py": "def test_cli_template():\n    assert True\n",
+    },
+    "PyQt desktop application": {
+        "main.py": 'import sys\n\nfrom PyQt5.QtWidgets import QApplication, QLabel\n\n\ndef main():\n    app = QApplication(sys.argv)\n    window = QLabel("Your PyQt application starts here.")\n    window.setWindowTitle("New PyQt Project")\n    window.resize(420, 120)\n    window.show()\n    sys.exit(app.exec_())\n\n\nif __name__ == "__main__":\n    main()\n',
+        "tests/test_main.py": "def test_pyqt_template():\n    assert True\n",
+    },
+    "FastAPI web API": {
+        "main.py": 'from fastapi import FastAPI\n\napp = FastAPI(title="New API")\n\n\n@app.get("/")\ndef read_root():\n    return {"message": "Hello from your new API"}\n',
+        "tests/test_main.py": "def test_api_template():\n    assert True\n",
+    },
+    "Data science project": {
+        "main.py": 'def main():\n    print("Start your data exploration here.")\n\n\nif __name__ == "__main__":\n    main()\n',
+        "tests/test_main.py": "def test_data_science_template():\n    assert True\n",
+    },
 }
 
 HELP_TOPICS = {
@@ -712,13 +746,17 @@ class ProjectSetupWorker(QThread):
     log_line = pyqtSignal(str)
     completed = pyqtSignal(object)
 
-    def __init__(self, uv_executable, project_directory, project_name, packages, python_version):
+    def __init__(
+        self, uv_executable, project_directory, project_name, packages,
+        python_version, template_name,
+    ):
         super().__init__()
         self.uv_executable = uv_executable
         self.project_directory = Path(project_directory)
         self.project_name = project_name
         self.packages = list(packages)
         self.python_version = python_version
+        self.template_name = template_name
         self._process = None
         self._cancel = False
 
@@ -769,6 +807,7 @@ class ProjectSetupWorker(QThread):
                  str(self.project_directory)],
                 120,
             )
+            self.write_template_files()
             if self._cancel:
                 raise RuntimeError("Setup was cancelled by the user.")
             self.run_command(
@@ -793,6 +832,22 @@ class ProjectSetupWorker(QThread):
             self.completed.emit(
                 {"success": False, "error": str(error), "packages": self.packages}
             )
+
+    def write_template_files(self):
+        template_files = PROJECT_TEMPLATES[self.template_name]
+        for relative_path, content in template_files.items():
+            path = self.project_directory / relative_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        readme = self.project_directory / "README.md"
+        if not readme.exists():
+            readme.write_text(
+                f"# {self.project_name}\n\n"
+                f"Created with the {self.template_name} template.\n\n"
+                "Run the project with `uv run python main.py`.\n",
+                encoding="utf-8",
+            )
+        self.log_line.emit(f"Template created: {self.template_name}")
 
 
 class ProjectSetupProgressDialog(QDialog):
@@ -1756,7 +1811,7 @@ class DevSuiteWindow(QMainWindow):
         if dialog.exec_() != QDialog.Accepted:
             return
 
-        project_name, project_location, python_version = (
+        project_name, project_location, python_version, template_name = (
             dialog.get_project_details()
         )
 
@@ -1830,6 +1885,7 @@ class DevSuiteWindow(QMainWindow):
             f"Create project '{project_name}'?\n\n"
             f"Location:\n{project_directory}\n\n"
             f"Python: {python_version}\n\n"
+            f"Template: {template_name}\n\n"
             "DevSuite will:\n"
             "• Initialize a Python application with uv\n"
             "• Create a Git repository\n"
@@ -1849,7 +1905,7 @@ class DevSuiteWindow(QMainWindow):
         progress_dialog = ProjectSetupProgressDialog(project_name, self)
         worker = ProjectSetupWorker(
             uv_executable, project_directory, project_name,
-            selected_packages, python_version,
+            selected_packages, python_version, template_name,
         )
         progress_dialog.worker = worker
         worker.progress.connect(progress_dialog.status_label.setText)
