@@ -757,6 +757,8 @@ class ProjectSetupWorker(QThread):
         self.packages = list(packages)
         self.python_version = python_version
         self.template_name = template_name
+        self.installed_packages = []
+        self.failed_packages = []
         self._process = None
         self._cancel = False
 
@@ -810,27 +812,54 @@ class ProjectSetupWorker(QThread):
             self.write_template_files()
             if self._cancel:
                 raise RuntimeError("Setup was cancelled by the user.")
+            if self.packages:
+                for package in self.packages:
+                    if self._cancel:
+                        raise RuntimeError("Setup was cancelled by the user.")
+                    try:
+                        self.run_command(
+                            f"Step 2 of 3: Adding {package}…",
+                            [self.uv_executable, "add", "--directory",
+                             str(self.project_directory), package],
+                            600,
+                        )
+                        self.installed_packages.append(package)
+                    except (RuntimeError, TimeoutError) as error:
+                        self.failed_packages.append(package)
+                        self.log_line.emit(
+                            f"WARNING: Could not add {package}: {error}"
+                        )
+
+            if self._cancel:
+                raise RuntimeError("Setup was cancelled by the user.")
             self.run_command(
-                "Step 2 of 3: Creating the virtual environment and syncing dependencies…",
+                "Step 3 of 3: Creating the virtual environment and syncing dependencies…",
                 [self.uv_executable, "sync", "--directory", str(self.project_directory)],
                 300,
             )
-            if self._cancel:
-                raise RuntimeError("Setup was cancelled by the user.")
-            if self.packages:
-                self.run_command(
-                    "Step 3 of 3: Installing recommended packages…",
-                    [self.uv_executable, "add", "--directory",
-                     str(self.project_directory), *self.packages],
-                    600,
-                )
+            if self.failed_packages:
+                failed = ", ".join(self.failed_packages)
+                self.completed.emit({
+                    "success": False,
+                    "error": f"These packages could not be installed: {failed}",
+                    "packages": self.installed_packages,
+                    "failed_packages": self.failed_packages,
+                })
             else:
-                self.progress.emit("Finalizing your clean Python project…")
-            self.completed.emit({"success": True, "packages": self.packages})
+                self.completed.emit({
+                    "success": True,
+                    "packages": self.installed_packages,
+                    "failed_packages": [],
+                })
         except Exception as error:
             self.log_line.emit(f"\nERROR: {error}")
             self.completed.emit(
-                {"success": False, "error": str(error), "packages": self.packages}
+                {
+                    "success": False,
+                    "error": str(error),
+                    "packages": self.installed_packages,
+                    "failed_packages": self.failed_packages,
+                }
             )
 
     def write_template_files(self):
@@ -2032,9 +2061,10 @@ class DevSuiteWindow(QMainWindow):
             self.refresh_workspace_views()
 
             if result.get("success"):
+                installed_packages = result.get("packages", [])
                 deps_line = (
-                    "✓ Dependencies: " + ", ".join(selected_packages) + "\n\n"
-                    if selected_packages else "\n"
+                    "✓ Dependencies: " + ", ".join(installed_packages) + "\n\n"
+                    if installed_packages else "✓ Dependencies: none\n\n"
                 )
                 QMessageBox.information(
                     self, "Project created successfully! 🎉",
@@ -2052,11 +2082,22 @@ class DevSuiteWindow(QMainWindow):
                     "Happy coding, buddy! 🐍",
                 )
             else:
+                installed_packages = result.get("packages", [])
+                failed_packages = result.get("failed_packages", [])
+                package_summary = (
+                    f"Installed: {', '.join(installed_packages)}\n"
+                    if installed_packages else "Installed: none\n"
+                )
+                if failed_packages:
+                    package_summary += (
+                        f"Failed: {', '.join(failed_packages)}\n"
+                    )
                 QMessageBox.warning(
                     self, "Project setup needs attention",
                     "DevSuite™ could not finish every setup step. The project may "
                     "have been partially created.\n\n"
                     f"Details: {result.get('error', 'Unknown setup error')}\n\n"
+                    f"{package_summary}\n"
                     f"Project location:\n{project_directory}\n\n"
                     "Open the project folder and inspect the files before retrying. "
                     "You can usually finish dependency setup by running `uv sync` there.",
