@@ -645,6 +645,7 @@ class ProjectSetupProgressDialog(QDialog):
         super().closeEvent(event)
 
 
+
 class DevSuiteWindow(QMainWindow):
     def read_project_metadata(project_path: Path):
         """Extract dependency names and script entry-points from pyproject.toml."""
