@@ -1,5 +1,6 @@
 import os
 import re
+import tomllib
 import shutil
 import subprocess
 import sys
@@ -645,6 +646,22 @@ class ProjectSetupProgressDialog(QDialog):
 
 
 class DevSuiteWindow(QMainWindow):
+    def read_project_metadata(project_path: Path):
+        """Extract dependency names and script entry-points from pyproject.toml."""
+        pyproject = Path(project_path) / "pyproject.toml"
+        dependencies = []
+        scripts = {}
+        try:
+            with open(pyproject, "rb") as handle:
+                data = tomllib.load(handle)
+            dependencies = list(
+                (data.get("project", {}).get("dependencies") or [])
+            )
+            scripts = dict(data.get("project", {}).get("scripts") or {})
+        except (OSError, ValueError):
+            pass
+        return dependencies, scripts
+
     def __init__(self):
         super().__init__()
 
