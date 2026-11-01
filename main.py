@@ -7,6 +7,7 @@ import tomllib
 from pathlib import Path
 
 from PyQt5.QtCore import QSettings, QThread, pyqtSignal
+from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -28,6 +29,7 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QPlainTextEdit,
     QProgressBar,
+    QShortcut,
     QVBoxLayout,
     QWidget,
 )
@@ -67,6 +69,7 @@ def git_current_branch(project_path):
     except (OSError, subprocess.TimeoutExpired):
         pass
     return None
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
@@ -375,6 +378,65 @@ EXTRA_PACKAGES = {
     "yt-dlp": ("Download media from supported websites using yt-dlp's command-line library.", "Optional"),
 }
 
+HELP_TOPICS = {
+    "Welcome": (
+        "Trixie DevSuite Help\n\n"
+        "DevSuite helps you create and manage Python projects with uv. "
+        "Use the sidebar to create a project, browse discovered projects, "
+        "inspect environments, or change settings.\n\n"
+        "Keyboard shortcut\n"
+        "Press Ctrl+H at any time to open this manual."
+    ),
+    "Create a project": (
+        "Create a Python project\n\n"
+        "1. Select New Project.\n"
+        "2. Enter a project name and choose a parent folder.\n"
+        "3. Select the Python version.\n"
+        "4. Review the offline package recommendations.\n"
+        "5. Confirm the setup.\n\n"
+        "DevSuite uses uv to initialize the project, create its virtual "
+        "environment, install selected packages, and initialize Git."
+    ),
+    "My Projects": (
+        "My Projects\n\n"
+        "Projects are discovered from Settings → Project search folders. "
+        "DevSuite checks each configured folder and its immediate subfolders "
+        "for pyproject.toml files.\n\n"
+        "Select a project to open its folder, launch VS Code, open a terminal, "
+        "or run its main.py file."
+    ),
+    "Environments": (
+        "Python Environments\n\n"
+        "DevSuite detects .venv and venv folders inside discovered projects. "
+        "Use Open Project Terminal to work in that project, or Inspect Packages "
+        "to view packages through uv.\n\n"
+        "DevSuite never deletes or modifies an existing environment while "
+        "refreshing this page."
+    ),
+    "Settings": (
+        "Settings\n\n"
+        "Interface density changes dashboard spacing. Project search folders "
+        "control where DevSuite looks for projects."
+    ),
+    "Troubleshooting": (
+        "Troubleshooting\n\n"
+        "• uv unavailable: install uv and ensure it is on PATH.\n"
+        "• Git unavailable: install Git and ensure git is on PATH.\n"
+        "• No projects found: add the correct parent folder in Settings.\n"
+        "• No environment found: run `uv sync` in the project folder.\n"
+        "• Project will not run: make sure the project contains main.py.\n"
+        "• Terminal unavailable: install PowerShell or a supported terminal.\n\n"
+        "The setup progress window shows command output and failure details."
+    ),
+    "About": (
+        "About Trixie DevSuite\n\n"
+        "Trixie DevSuite is an online / offline-first Python workspace built with "
+        "Python and PyQt5. Package recommendations are rule-based and do not "
+        "send your project idea to an online service.\n\n"
+        "Version: 0.6.0"
+    ),
+}
+
 
 class PackageAdvisorDialog(QDialog):
     """Step 2 of the New Project flow: rule-based offline package picks."""
@@ -676,22 +738,6 @@ class ProjectSetupProgressDialog(QDialog):
 
 
 class DevSuiteWindow(QMainWindow):
-    def read_project_metadata(project_path: Path):
-        """Extract dependency names and script entry-points from pyproject.toml."""
-        pyproject = Path(project_path) / "pyproject.toml"
-        dependencies = []
-        scripts = {}
-        try:
-            with open(pyproject, "rb") as handle:
-                data = tomllib.load(handle)
-            dependencies = list(
-                (data.get("project", {}).get("dependencies") or [])
-            )
-            scripts = dict(data.get("project", {}).get("scripts") or {})
-        except (OSError, ValueError):
-            pass
-        return dependencies, scripts
-
     def __init__(self):
         super().__init__()
 
@@ -822,6 +868,9 @@ class DevSuiteWindow(QMainWindow):
         environments_nav = self.add_nav_button(sidebar_layout, "⚙   Environments")
         environments_nav.clicked.connect(self.show_environments)
 
+        help_nav = self.add_nav_button(sidebar_layout, "?   Help")
+        help_nav.clicked.connect(self.show_help)
+
         sidebar_layout.addStretch()
 
         settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
@@ -906,9 +955,14 @@ class DevSuiteWindow(QMainWindow):
         self.pages.addWidget(content)
         self.projects_page = self.build_projects_page()
         self.environments_page = self.build_environments_page()
+        self.help_page = self.build_help_page()
         self.pages.addWidget(self.projects_page)
         self.pages.addWidget(self.environments_page)
+        self.pages.addWidget(self.help_page)
         self.root_layout.addWidget(self.pages, 1)
+
+        self.help_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
+        self.help_shortcut.activated.connect(self.show_help)
 
         self.refresh_workspace_views()
         self.update_responsive_layout()
@@ -916,7 +970,7 @@ class DevSuiteWindow(QMainWindow):
     # ---- Settings helpers ----
 
     def load_search_roots(self):
-        raw = self.settings.value(DEFAULT_SEARCH_ROOTS_KEY)
+        raw = self.settings.value(SEARCH_ROOTS_KEY)
         if isinstance(raw, str):
             raw = [raw]
         roots = [str(item) for item in (raw or []) if str(item).strip()]
@@ -926,7 +980,7 @@ class DevSuiteWindow(QMainWindow):
         return roots
 
     def save_search_roots(self):
-        self.settings.setValue(DEFAULT_SEARCH_ROOTS_KEY, self.project_search_roots)
+        self.settings.setValue(SEARCH_ROOTS_KEY, self.project_search_roots)
 
     def build_projects_page(self):
         page = QWidget()
@@ -937,6 +991,10 @@ class DevSuiteWindow(QMainWindow):
         heading = QLabel("My Projects")
         heading.setObjectName("heading")
         layout.addWidget(heading)
+
+        help_button = QPushButton("?  Help with projects")
+        help_button.clicked.connect(lambda: self.show_help("My Projects"))
+        layout.addWidget(help_button)
 
         subtitle = QLabel(
             "Projects discovered in your configured search folders "
@@ -988,6 +1046,10 @@ class DevSuiteWindow(QMainWindow):
         heading.setObjectName("heading")
         layout.addWidget(heading)
 
+        help_button = QPushButton("?  Help with environments")
+        help_button.clicked.connect(lambda: self.show_help("Environments"))
+        layout.addWidget(help_button)
+
         subtitle = QLabel(
             "Virtual environments discovered in the projects DevSuite™ knows about. "
             "DevSuite will inspect them without deleting or modifying them."
@@ -1018,6 +1080,57 @@ class DevSuiteWindow(QMainWindow):
         packages_button.clicked.connect(self.inspect_selected_environment)
         actions.addWidget(packages_button)
         layout.addLayout(actions)
+        return page
+
+    def build_help_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
+
+        heading = QLabel("Help & Manual")
+        heading.setObjectName("heading")
+        layout.addWidget(heading)
+
+        subtitle = QLabel(
+            "Search the offline manual or choose a topic. Press Ctrl+H from anywhere."
+        )
+        subtitle.setObjectName("subtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        search = QLineEdit()
+        search.setPlaceholderText("Search help topics...")
+        layout.addWidget(search)
+
+        content_layout = QHBoxLayout()
+        self.help_topics_list = QListWidget()
+        self.help_topics_list.setMinimumWidth(190)
+        self.help_article = QPlainTextEdit()
+        self.help_article.setReadOnly(True)
+        self.help_article.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        content_layout.addWidget(self.help_topics_list)
+        content_layout.addWidget(self.help_article, 1)
+        layout.addLayout(content_layout, 1)
+
+        for topic in HELP_TOPICS:
+            self.help_topics_list.addItem(topic)
+
+        def display_topic(item):
+            if item is not None:
+                self.help_article.setPlainText(HELP_TOPICS[item.text()])
+
+        def filter_topics(text):
+            query = text.casefold().strip()
+            for index in range(self.help_topics_list.count()):
+                item = self.help_topics_list.item(index)
+                item.setHidden(query not in item.text().casefold())
+
+        search.textChanged.connect(filter_topics)
+        self.help_topics_list.currentItemChanged.connect(
+            lambda current, _previous: display_topic(current)
+        )
+        self.help_topics_list.setCurrentRow(0)
         return page
 
     def discover_projects(self):
@@ -1114,6 +1227,15 @@ class DevSuiteWindow(QMainWindow):
     def show_environments(self):
         self.pages.setCurrentIndex(2)
         self.refresh_workspace_views()
+
+    def show_help(self, topic="Welcome"):
+        self.pages.setCurrentIndex(3)
+        for index in range(self.help_topics_list.count()):
+            item = self.help_topics_list.item(index)
+            if item.text() == topic:
+                self.help_topics_list.setCurrentItem(item)
+                return
+        self.help_topics_list.setCurrentRow(0)
 
     def selected_project_path(self, list_widget):
         item = list_widget.currentItem()
