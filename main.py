@@ -565,11 +565,13 @@ HELP_TOPICS = {
         "• Terminal unavailable: install PowerShell or a supported terminal.\n\n"
         "The setup progress window shows command output and failure details."
     ),
-    "FYI": (
-        "For your information about Trixie DevSuite\n\n"
-        "Trixie DevSuite is an online / offline-first Python workspace built with "
+    "About & Owner": (
+        "About Trixie DevSuite\n\n"
+        "Trixie DevSuite is an offline-first Python workspace built with "
         "Python and PyQt5. Package recommendations are rule-based and do not "
         "send your project idea to an online service.\n\n"
+        "Created by Trixie Misheen\n"
+        "Use the buttons below to visit the official social and project links.\n\n"
         "Version: 0.6.0"
     ),
 }
@@ -582,6 +584,12 @@ HELP_RESOURCES = {
         ("Install PowerShell", "https://learn.microsoft.com/powershell/scripting/install/installing-powershell"),
         ("Install Windows Terminal", "https://learn.microsoft.com/windows/terminal/install"),
         ("Install VS Code", "https://code.visualstudio.com/download"),
+    ],
+    "About & Owner": [
+        ("Telegram", "https://t.me/Trixie_Misheen"),
+        ("Instagram", "https://instagram.com/trixiemisheen"),
+        ("WhatsApp", "https://wa.me/254791915925"),
+        ("GitHub", "https://github.com/trixiemisheen/"),
     ],
 }
 
@@ -1336,7 +1344,7 @@ class DevSuiteWindow(QMainWindow):
             project_list.addItem(item)
         if not paths:
             empty = QListWidgetItem("No projects yet")
-            empty.setFlags(empty.flags() & ~empty.ItemIsSelectable)
+            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
             project_list.addItem(empty)
         project_list.itemDoubleClicked.connect(self.open_shortlist_project)
         layout.addWidget(project_list)
@@ -1355,7 +1363,7 @@ class DevSuiteWindow(QMainWindow):
                 widget.project_list.addItem(item)
             if not paths:
                 empty = QListWidgetItem("No projects yet")
-                empty.setFlags(empty.flags() & ~empty.ItemIsSelectable)
+                empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
                 widget.project_list.addItem(empty)
 
     def open_shortlist_project(self, item):
@@ -1666,14 +1674,14 @@ class DevSuiteWindow(QMainWindow):
             empty = QListWidgetItem(
                 "Developer! No projects found yet. Create one with + New Project."
             )
-            empty.setFlags(empty.flags() & ~empty.ItemIsSelectable)
+            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
             self.projects_list.addItem(empty)
 
         if not environment_count:
             empty = QListWidgetItem(
                 "No .venv or venv environments found in discovered projects."
             )
-            empty.setFlags(empty.flags() & ~empty.ItemIsSelectable)
+            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
             self.environments_list.addItem(empty)
 
     def show_dashboard(self):
