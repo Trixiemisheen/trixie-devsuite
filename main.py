@@ -983,9 +983,10 @@ class DevSuiteWindow(QMainWindow):
 
             QLabel#brand {
                 color: #00E5FF;
-                font-size: 23px;
+                font-size: 20px;
                 font-weight: bold;
-                padding: 12px;
+                padding: 8px 4px;
+                min-width: 0;
             }
 
             QLabel#section {
@@ -1088,6 +1089,19 @@ class DevSuiteWindow(QMainWindow):
 
             QLineEdit#help_search:focus {
                 border: 1px solid #00B8D4;
+            }
+
+            QPushButton#help_search_button {
+                background-color: #00B8D4;
+                border: 1px solid #00E5FF;
+                color: #10141C;
+                font-weight: bold;
+                padding: 10px 16px;
+                text-align: center;
+            }
+
+            QPushButton#help_search_button:hover {
+                background-color: #00E5FF;
             }
 
             QListWidget#help_topics {
@@ -1528,10 +1542,15 @@ class DevSuiteWindow(QMainWindow):
         hero_layout.addWidget(subtitle)
         layout.addWidget(hero)
 
+        search_row = QHBoxLayout()
         search = QLineEdit()
         search.setObjectName("help_search")
-        search.setPlaceholderText("Search help topics...")
-        layout.addWidget(search)
+        search.setPlaceholderText("Search the manual, e.g. how to activate uv")
+        search_button = QPushButton("Search")
+        search_button.setObjectName("help_search_button")
+        search_row.addWidget(search, 1)
+        search_row.addWidget(search_button)
+        layout.addLayout(search_row)
 
         content_layout = QHBoxLayout()
         self.help_topics_list = QListWidget()
@@ -1561,13 +1580,32 @@ class DevSuiteWindow(QMainWindow):
                 self.help_article.setPlainText(HELP_TOPICS[topic])
                 self.update_help_resources(topic)
 
-        def filter_topics(text):
-            query = text.casefold().strip()
+        def filter_topics():
+            query = search.text().casefold().strip()
+            first_match = None
             for index in range(self.help_topics_list.count()):
                 item = self.help_topics_list.item(index)
-                item.setHidden(query not in item.text().casefold())
+                topic = item.text()
+                matches = (
+                    not query
+                    or query in topic.casefold()
+                    or query in HELP_TOPICS[topic].casefold()
+                )
+                item.setHidden(not matches)
+                if matches and first_match is None:
+                    first_match = item
+            if first_match is not None:
+                self.help_topics_list.setCurrentItem(first_match)
+            else:
+                self.help_article.setPlainText(
+                    f'No help topics matched "{search.text().strip()}".\n\n'
+                    "Try searching for uv, Git, projects, environments, "
+                    "templates, or settings."
+                )
+                self.update_help_resources("")
 
-        search.textChanged.connect(filter_topics)
+        search_button.clicked.connect(filter_topics)
+        search.returnPressed.connect(filter_topics)
         self.help_topics_list.currentItemChanged.connect(
             lambda current, _previous: display_topic(current)
         )
