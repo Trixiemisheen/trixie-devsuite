@@ -1732,22 +1732,31 @@ class DevSuiteWindow(QMainWindow):
         )
         self.help_search_worker.start()
 
+    def open_external_help_search(self, query=None):
+        query = (query or self.help_search_input.text()).strip()
+        if not query:
+            return
+        url = "https://www.google.com/search?" + urlencode({"q": query})
+        webbrowser.open(url)
+        self.help_article.setPlainText(
+            f'No in-app results were available for "{query}".\n\n'
+            "The search was opened in your default browser.\n\n"
+            f"Search URL:\n{url}"
+        )
+
     def display_web_results(self, result):
         if not result.get("success"):
-            self.help_article.setPlainText(
-                "Online search could not be completed.\n\n"
-                f"Details: {result.get('error', 'Unknown network error')}\n\n"
-                "Check your internet connection or use the resource buttons "
-                "below the manual."
+            query = self.help_search_input.text().strip()
+            self.open_external_help_search(query)
+            self.help_article.append(
+                "\nIn-app search error:\n"
+                f"{result.get('error', 'Unknown network error')}"
             )
             return
 
         results = result.get("results", [])
         if not results:
-            self.help_article.setPlainText(
-                "No online results were found.\n\n"
-                "Try a more specific question or check your spelling."
-            )
+            self.open_external_help_search()
             return
 
         lines = [
