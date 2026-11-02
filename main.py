@@ -5,7 +5,10 @@ import subprocess
 import sys
 import tomllib
 import webbrowser
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from PyQt5.QtCore import Qt, QSettings, QThread, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence
@@ -592,6 +595,77 @@ HELP_RESOURCES = {
         ("GitHub", "https://github.com/trixiemisheen/"),
     ],
 }
+
+
+class SearchResultsParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.results = []
+        self._current = None
+        self._capture = None
+        self._snippet_index = None
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        classes = attributes.get("class", "").split()
+        if tag == "a" and "result__a" in classes:
+            self._current = {
+                "title": "",
+                "url": self.clean_url(attributes.get("href", "")),
+                "snippet": "",
+            }
+            self._capture = "title"
+        elif self.results and "result__snippet" in classes:
+            self._capture = "snippet"
+            self._snippet_index = len(self.results) - 1
+
+    def handle_data(self, data):
+        if self._current and self._capture == "title":
+            self._current[self._capture] += data
+        elif self._capture == "snippet" and self._snippet_index is not None:
+            self.results[self._snippet_index]["snippet"] += data
+
+    def handle_endtag(self, tag):
+        if self._current and tag == "a" and self._capture == "title":
+            self.results.append(self._current)
+            self._current = None
+            self._capture = None
+        elif self._capture == "snippet":
+            self._capture = None
+            self._snippet_index = None
+
+    @staticmethod
+    def clean_url(url):
+        parsed = urlparse(url)
+        if parsed.path.startswith("/l/"):
+            query = parse_qs(parsed.query)
+            return unquote(query.get("uddg", [url])[0])
+        return url
+
+
+class WebSearchWorker(QThread):
+    completed = pyqtSignal(object)
+
+    def __init__(self, query):
+        super().__init__()
+        self.query = query
+
+    def run(self):
+        try:
+            url = "https://html.duckduckgo.com/html/?" + urlencode(
+                {"q": self.query}
+            )
+            request = Request(
+                url,
+                headers={"User-Agent": "TrixieDevSuite/0.6"},
+            )
+            with urlopen(request, timeout=12) as response:
+                html = response.read().decode("utf-8", errors="replace")
+            parser = SearchResultsParser()
+            parser.feed(html)
+            self.completed.emit({"success": True, "results": parser.results[:8]})
+        except (OSError, ValueError) as error:
+            self.completed.emit({"success": False, "error": str(error)})
 
 
 class PackageAdvisorDialog(QDialog):
@@ -1604,8 +1678,10 @@ class DevSuiteWindow(QMainWindow):
                 )
                 self.update_help_resources("")
 
-        search_button.clicked.connect(filter_topics)
-        search.returnPressed.connect(filter_topics)
+        search_button.clicked.connect(self.search_help_online)
+        search.returnPressed.connect(self.search_help_online)
+        self.help_search_input = search
+        self.help_search_button = search_button
         self.help_topics_list.currentItemChanged.connect(
             lambda current, _previous: display_topic(current)
         )
@@ -1630,6 +1706,64 @@ class DevSuiteWindow(QMainWindow):
             )
             self.help_resources_layout.addWidget(button)
         self.help_resources_layout.addStretch()
+
+    def search_help_online(self):
+        query = self.help_search_input.text().strip()
+        if not query:
+            self.help_article.setPlainText(
+                "Enter a question or topic to search the internet.\n\n"
+                "For example: how to activate a Python virtual environment"
+            )
+            return
+
+        self.help_search_button.setEnabled(False)
+        self.help_search_button.setText("Searching...")
+        self.help_article.setPlainText(
+            f'Searching the internet for "{query}"...\n\n'
+            "Please wait while results are fetched."
+        )
+        self.help_search_worker = WebSearchWorker(query)
+        self.help_search_worker.completed.connect(self.display_web_results)
+        self.help_search_worker.finished.connect(
+            lambda: self.help_search_button.setEnabled(True)
+        )
+        self.help_search_worker.finished.connect(
+            lambda: self.help_search_button.setText("Search")
+        )
+        self.help_search_worker.start()
+
+    def display_web_results(self, result):
+        if not result.get("success"):
+            self.help_article.setPlainText(
+                "Online search could not be completed.\n\n"
+                f"Details: {result.get('error', 'Unknown network error')}\n\n"
+                "Check your internet connection or use the resource buttons "
+                "below the manual."
+            )
+            return
+
+        results = result.get("results", [])
+        if not results:
+            self.help_article.setPlainText(
+                "No online results were found.\n\n"
+                "Try a more specific question or check your spelling."
+            )
+            return
+
+        lines = [
+            f"Online results for: {self.help_search_input.text().strip()}",
+            "Fetched from DuckDuckGo. Double-click a resource button below "
+            "for official installation pages.\n",
+        ]
+        for index, item in enumerate(results, 1):
+            lines.extend([
+                f"{index}. {item['title'].strip()}",
+                item["snippet"].strip() or "No summary available.",
+                item["url"],
+                "",
+            ])
+        self.help_article.setPlainText("\n".join(lines))
+        self.update_help_resources("")
 
     def discover_projects(self):
         """Discover projects inside the configured search roots (one level deep)."""
