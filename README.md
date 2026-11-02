@@ -24,6 +24,8 @@ and practical project shortcuts.
   page, with command output shown in DevSuite.
 - Inspect installed packages, add or remove dependencies, and upgrade a
   project's `uv.lock` file from the Projects page.
+- Inspect Git status and recent history, review the current branch, and commit
+  project changes from the Git Workspace.
 - Inspect installed packages in discovered environments.
 - Configure interface density, default project location, default Python version,
   automatic refresh, and project search folders from Settings.

@@ -1555,6 +1555,9 @@ class DevSuiteWindow(QMainWindow):
         dependencies_button = QPushButton("📦  Dependencies")
         dependencies_button.clicked.connect(self.manage_selected_dependencies)
         actions.addWidget(dependencies_button)
+        git_button = QPushButton(" Git  Git Workspace")
+        git_button.clicked.connect(self.open_git_workspace)
+        actions.addWidget(git_button)
         pin_button = QPushButton("☆  Pin / Unpin")
         pin_button.clicked.connect(self.toggle_selected_favorite)
         actions.addWidget(pin_button)
@@ -2295,6 +2298,115 @@ class DevSuiteWindow(QMainWindow):
             )
         )
         refresh_installed()
+        dialog.exec_()
+
+    def open_git_workspace(self):
+        project = self.selected_project_path(self.projects_list)
+        if not project:
+            return
+        git_path = shutil.which("git")
+        if git_path is None:
+            QMessageBox.warning(
+                self, "Git unavailable",
+                "The 'git' command was not found on PATH.",
+            )
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Git Workspace • {project.name}")
+        dialog.resize(820, 620)
+        layout = QVBoxLayout(dialog)
+
+        branch_label = QLabel()
+        layout.addWidget(branch_label)
+
+        action_row = QHBoxLayout()
+        refresh_button = QPushButton("Refresh Status")
+        history_button = QPushButton("View History")
+        action_row.addWidget(refresh_button)
+        action_row.addWidget(history_button)
+        layout.addLayout(action_row)
+
+        output = QPlainTextEdit()
+        output.setReadOnly(True)
+        layout.addWidget(output, 1)
+
+        commit_message = QLineEdit()
+        commit_message.setPlaceholderText("Commit message")
+        layout.addWidget(commit_message)
+        commit_button = QPushButton("Commit All Changes")
+        layout.addWidget(commit_button)
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+
+        def run_git(arguments, label):
+            try:
+                result = subprocess.run(
+                    [git_path, *arguments],
+                    cwd=str(project),
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                output.setPlainText(f"{label} timed out after 30 seconds.")
+                return None
+            except OSError as error:
+                output.setPlainText(f"Could not run Git:\n{error}")
+                return None
+
+            command_output = (result.stdout or "") + (result.stderr or "")
+            if result.returncode != 0:
+                output.setPlainText(
+                    f"{label} failed with exit code {result.returncode}.\n\n"
+                    f"{command_output.strip() or 'Git returned no details.'}"
+                )
+                return None
+            return command_output.strip()
+
+        def refresh_status():
+            branch = run_git(["branch", "--show-current"], "Branch lookup")
+            branch_label.setText(
+                f"<b>{project.name}</b>  •  branch: {branch or 'detached HEAD'}"
+            )
+            status = run_git(
+                ["status", "--short", "--branch"],
+                "Status lookup",
+            )
+            if status is not None:
+                output.setPlainText(status or "Working tree is clean.")
+
+        def show_history():
+            history = run_git(
+                ["log", "--oneline", "--decorate", "-20"],
+                "History lookup",
+            )
+            if history is not None:
+                output.setPlainText(history or "No commits found.")
+
+        def commit_changes():
+            message = commit_message.text().strip()
+            if not message:
+                QMessageBox.warning(
+                    dialog, "Commit message required",
+                    "Enter a commit message before committing changes.",
+                )
+                return
+            staged = run_git(["add", "--all"], "Staging changes")
+            if staged is None:
+                return
+            commit = run_git(["commit", "-m", message], "Commit")
+            if commit is not None:
+                output.setPlainText(commit or "Commit created successfully.")
+                commit_message.clear()
+                self.refresh_workspace_views()
+
+        refresh_button.clicked.connect(refresh_status)
+        history_button.clicked.connect(show_history)
+        commit_button.clicked.connect(commit_changes)
+        refresh_status()
         dialog.exec_()
 
     def inspect_selected_environment(self):
