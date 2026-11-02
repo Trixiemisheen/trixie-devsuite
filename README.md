@@ -1,9 +1,9 @@
 # Trixie DevSuite
 
-Trixie DevSuite is a desktop workspace for creating and managing Python
+Trixie DevSuite is a PyQt5 desktop workspace for creating and managing Python
 projects. It provides a dashboard for projects and virtual environments,
-guided project creation with `uv`, and an offline package recommendation
-assistant.
+guided project creation with `uv`, package recommendations, an in-app manual,
+and practical project shortcuts.
 
 ## Features
 
@@ -11,11 +11,23 @@ assistant.
 - Initialize projects with Git, a `pyproject.toml`, and a virtual environment.
 - Start projects from Basic Python, CLI, PyQt, FastAPI, or data science templates.
 - Choose packages from recommendations based on the project type and idea.
+- Install recommended packages individually so one unavailable package does not
+  prevent the remaining packages from being installed.
+- Report installed and failed packages when setup needs attention.
 - Discover projects in configured folders and one level of subfolders.
+- Pin favorite projects and keep a list of recent projects.
 - Open project folders, terminals, or projects in VS Code.
 - Run a project's `main.py` with its managed environment.
 - Inspect installed packages in discovered environments.
-- Adjust interface density and project search folders from Settings.
+- Configure interface density, default project location, default Python version,
+  automatic refresh, and project search folders from Settings.
+- Check the availability of Python, `uv`, Git, VS Code, and PowerShell.
+- Browse a searchable offline manual with troubleshooting and project guidance.
+- Search the internet from the Help page; unavailable results open in the
+  default browser automatically.
+- Open official installation and package links for `uv`, PyPI, Git, PowerShell,
+  Windows Terminal, and VS Code.
+- Visit the owner's Telegram, Instagram, WhatsApp, and GitHub links.
 
 ## Requirements
 
@@ -23,8 +35,8 @@ assistant.
 - [`uv`](https://docs.astral.sh/uv/) on your `PATH`
 - PyQt5-compatible desktop environment
 
-The application currently targets Windows, but the terminal integration also
-supports common Linux terminal emulators.
+The application currently targets Windows, but terminal integration also
+supports common Linux and macOS terminal launchers where available.
 
 ## Installation
 
@@ -68,13 +80,48 @@ python main.py
 
 DevSuite uses `uv init`, `uv sync`, and `uv add` during setup. Make sure `uv`
 is installed and available on `PATH` before creating a project.
+If individual package installation fails, DevSuite continues with the remaining
+packages and shows the failed package names after setup.
 
 ## Project discovery
 
 By default, DevSuite searches the `Projects` folder in your home directory.
 Additional search folders can be configured under **Settings → Project search
 folders**. The **My Projects** and **Environments** pages can be refreshed
-after changing these locations.
+after changing these locations. Double-click a pinned or recent project on the
+dashboard to open its folder.
+
+## Help and online search
+
+Open **Help** from the sidebar or press **Ctrl+H**. The Help page includes:
+
+- A searchable manual for project creation, environments, settings, and
+  troubleshooting.
+- Official resource links for common missing tools and packages.
+- Internet search powered by DuckDuckGo.
+- Automatic fallback to a Google search in the default browser when an online
+  query fails or returns no usable result.
+
+Online search requires an internet connection. The app remains usable offline
+for its built-in manual and project management features.
+
+## Settings
+
+The Settings dialog is compact and scrollable. It supports:
+
+- Comfortable or Compact interface density.
+- Default project location and Python version.
+- Automatic workspace refresh every 30 seconds.
+- Project search folders.
+- Tool availability checks.
+- Resetting settings to defaults.
+
+## Owner links
+
+- Telegram: <https://t.me/Trixie_Misheen>
+- Instagram: <https://instagram.com/trixiemisheen>
+- WhatsApp: <https://wa.me/254791915925>
+- GitHub: <https://github.com/trixiemisheen/>
 
 ## Development
 
