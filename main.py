@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import webbrowser
 from pathlib import Path
 
 from PyQt5.QtCore import Qt, QSettings, QThread, QTimer, pyqtSignal
@@ -573,6 +574,17 @@ HELP_TOPICS = {
     ),
 }
 
+HELP_RESOURCES = {
+    "Troubleshooting": [
+        ("Install uv", "https://docs.astral.sh/uv/getting-started/installation/"),
+        ("Find packages on PyPI", "https://pypi.org/"),
+        ("Install Git", "https://git-scm.com/downloads"),
+        ("Install PowerShell", "https://learn.microsoft.com/powershell/scripting/install/installing-powershell"),
+        ("Install Windows Terminal", "https://learn.microsoft.com/windows/terminal/install"),
+        ("Install VS Code", "https://code.visualstudio.com/download"),
+    ],
+}
+
 
 class PackageAdvisorDialog(QDialog):
     """Step 2 of the New Project flow: rule-based offline package picks."""
@@ -1106,6 +1118,26 @@ class DevSuiteWindow(QMainWindow):
                 padding: 18px;
                 selection-background-color: #146A80;
             }
+
+            QLabel#help_resources_title {
+                color: #8B949E;
+                font-size: 12px;
+                font-weight: bold;
+            }
+
+            QPushButton#help_link {
+                background-color: #202633;
+                border: 1px solid #3B5265;
+                color: #7DEBFF;
+                padding: 8px 10px;
+                text-align: center;
+            }
+
+            QPushButton#help_link:hover {
+                background-color: #164653;
+                border-color: #00B8D4;
+                color: #FFFFFF;
+            }
         """)
 
         central = QWidget()
@@ -1505,12 +1537,21 @@ class DevSuiteWindow(QMainWindow):
         content_layout.addWidget(self.help_article, 1)
         layout.addLayout(content_layout, 1)
 
+        self.help_resources_title = QLabel("ONLINE RESOURCES")
+        self.help_resources_title.setObjectName("help_resources_title")
+        layout.addWidget(self.help_resources_title)
+        self.help_resources_layout = QHBoxLayout()
+        self.help_resources_layout.setSpacing(8)
+        layout.addLayout(self.help_resources_layout)
+
         for topic in HELP_TOPICS:
             self.help_topics_list.addItem(topic)
 
         def display_topic(item):
             if item is not None:
-                self.help_article.setPlainText(HELP_TOPICS[item.text()])
+                topic = item.text()
+                self.help_article.setPlainText(HELP_TOPICS[topic])
+                self.update_help_resources(topic)
 
         def filter_topics(text):
             query = text.casefold().strip()
@@ -1523,7 +1564,26 @@ class DevSuiteWindow(QMainWindow):
             lambda current, _previous: display_topic(current)
         )
         self.help_topics_list.setCurrentRow(0)
+        self.update_help_resources("Welcome")
         return page
+
+    def update_help_resources(self, topic):
+        while self.help_resources_layout.count():
+            item = self.help_resources_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        resources = HELP_RESOURCES.get(topic, [])
+        self.help_resources_title.setVisible(bool(resources))
+        for label, url in resources:
+            button = QPushButton(label)
+            button.setObjectName("help_link")
+            button.clicked.connect(
+                lambda _checked=False, target=url: webbrowser.open(target)
+            )
+            self.help_resources_layout.addWidget(button)
+        self.help_resources_layout.addStretch()
 
     def discover_projects(self):
         """Discover projects inside the configured search roots (one level deep)."""
