@@ -1552,6 +1552,9 @@ class DevSuiteWindow(QMainWindow):
         lint_button = QPushButton("✓  Run Lint")
         lint_button.clicked.connect(self.lint_selected_project)
         actions.addWidget(lint_button)
+        dependencies_button = QPushButton("📦  Dependencies")
+        dependencies_button.clicked.connect(self.manage_selected_dependencies)
+        actions.addWidget(dependencies_button)
         pin_button = QPushButton("☆  Pin / Unpin")
         pin_button.clicked.connect(self.toggle_selected_favorite)
         actions.addWidget(pin_button)
@@ -2154,6 +2157,145 @@ class DevSuiteWindow(QMainWindow):
         project = self.selected_project_path(self.projects_list)
         if project:
             self.run_project_check(project, "Lint", ["ruff", "check", "."])
+
+    def manage_selected_dependencies(self):
+        project = self.selected_project_path(self.projects_list)
+        if not project:
+            return
+        if not (project / "pyproject.toml").is_file():
+            QMessageBox.warning(
+                self, "Project metadata not found",
+                f"No pyproject.toml was found in:\n{project}",
+            )
+            return
+        if shutil.which("uv") is None:
+            QMessageBox.warning(
+                self, "uv unavailable",
+                "The 'uv' command was not found on PATH. Install uv before "
+                "managing project dependencies.",
+            )
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Dependencies • {project.name}")
+        dialog.resize(760, 560)
+        layout = QVBoxLayout(dialog)
+
+        heading = QLabel(
+            "Inspect the environment or change this project's dependencies."
+        )
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+
+        package_input = QLineEdit()
+        package_input.setPlaceholderText("Package name, e.g. requests or rich>=13")
+        layout.addWidget(package_input)
+
+        action_row = QHBoxLayout()
+        list_button = QPushButton("Refresh Installed")
+        add_button = QPushButton("Add Package")
+        remove_button = QPushButton("Remove Package")
+        upgrade_button = QPushButton("Upgrade Lockfile")
+        action_row.addWidget(list_button)
+        action_row.addWidget(add_button)
+        action_row.addWidget(remove_button)
+        action_row.addWidget(upgrade_button)
+        layout.addLayout(action_row)
+
+        output = QPlainTextEdit()
+        output.setReadOnly(True)
+        output.setPlaceholderText("Dependency command output will appear here.")
+        layout.addWidget(output, 1)
+
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+
+        uv_path = shutil.which("uv")
+
+        def display_result(label, command):
+            try:
+                result = subprocess.run(
+                    command,
+                    cwd=str(project),
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                output.setPlainText(f"{label} timed out after five minutes.")
+                return
+            except OSError as error:
+                output.setPlainText(f"Could not run {label.lower()}:\n{error}")
+                return
+
+            command_output = (result.stdout or "") + (result.stderr or "")
+            status = "completed successfully" if result.returncode == 0 else (
+                f"failed with exit code {result.returncode}"
+            )
+            output.setPlainText(
+                f"{label} {status}.\n\n"
+                f"$ {' '.join(command)}\n\n"
+                f"{command_output.strip() or 'No output was produced.'}"
+            )
+            if result.returncode == 0:
+                self.refresh_workspace_views()
+
+        def package_name():
+            value = package_input.text().strip()
+            if not value or not re.fullmatch(
+                r"[A-Za-z0-9][A-Za-z0-9_.-]*(?:[<>=!~].+)?", value
+            ):
+                QMessageBox.warning(
+                    dialog, "Invalid package name",
+                    "Enter a package name such as requests or rich>=13. "
+                    "Do not include spaces.",
+                )
+                return None
+            return value
+
+        def refresh_installed():
+            python_executable = self.environment_python(project)
+            if python_executable is None:
+                output.setPlainText(
+                    "Package inspection could not run because this project "
+                    "has no .venv or venv environment.\n\n"
+                    "Use 'uv sync' from the project folder first, then refresh."
+                )
+                return
+            display_result(
+                "Package inspection",
+                [uv_path, "pip", "list", "--python", str(python_executable)],
+            )
+
+        def add_package():
+            package = package_name()
+            if package:
+                display_result(
+                    f"Adding {package}",
+                    [uv_path, "add", "--directory", str(project), package],
+                )
+
+        def remove_package():
+            package = package_name()
+            if package:
+                display_result(
+                    f"Removing {package}",
+                    [uv_path, "remove", "--directory", str(project), package],
+                )
+
+        list_button.clicked.connect(refresh_installed)
+        add_button.clicked.connect(add_package)
+        remove_button.clicked.connect(remove_package)
+        upgrade_button.clicked.connect(
+            lambda: display_result(
+                "Lockfile upgrade",
+                [uv_path, "lock", "--directory", str(project), "--upgrade"],
+            )
+        )
+        refresh_installed()
+        dialog.exec_()
 
     def inspect_selected_environment(self):
         project = self.selected_project_path(self.environments_list)

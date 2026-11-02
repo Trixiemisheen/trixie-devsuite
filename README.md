@@ -22,6 +22,8 @@ and practical project shortcuts.
   metadata, virtual environment status, and test folder availability.
 - Run project tests with `pytest` and lint checks with `ruff` from the project
   page, with command output shown in DevSuite.
+- Inspect installed packages, add or remove dependencies, and upgrade a
+  project's `uv.lock` file from the Projects page.
 - Inspect installed packages in discovered environments.
 - Configure interface density, default project location, default Python version,
   automatic refresh, and project search folders from Settings.
