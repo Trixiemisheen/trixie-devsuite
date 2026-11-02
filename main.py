@@ -1514,7 +1514,17 @@ class DevSuiteWindow(QMainWindow):
             "QListWidget::item { padding: 10px; border-bottom: 1px solid #303849; }"
             "QListWidget::item:selected { background-color: #164653; color: #FFFFFF; }"
         )
+        self.projects_list.currentItemChanged.connect(
+            lambda current, _previous: self.update_project_details(current)
+        )
         layout.addWidget(self.projects_list, 1)
+
+        self.project_details = QLabel(
+            "Select a project to view its health and development details."
+        )
+        self.project_details.setObjectName("subtitle")
+        self.project_details.setWordWrap(True)
+        layout.addWidget(self.project_details)
 
         actions = QHBoxLayout()
         refresh_button = QPushButton("↻  Refresh")
@@ -1536,6 +1546,12 @@ class DevSuiteWindow(QMainWindow):
         run_button = QPushButton("▶  Run main.py")
         run_button.clicked.connect(self.run_selected_project)
         actions.addWidget(run_button)
+        test_button = QPushButton("✓  Run Tests")
+        test_button.clicked.connect(self.test_selected_project)
+        actions.addWidget(test_button)
+        lint_button = QPushButton("✓  Run Lint")
+        lint_button.clicked.connect(self.lint_selected_project)
+        actions.addWidget(lint_button)
         pin_button = QPushButton("☆  Pin / Unpin")
         pin_button.clicked.connect(self.toggle_selected_favorite)
         actions.addWidget(pin_button)
@@ -1821,6 +1837,9 @@ class DevSuiteWindow(QMainWindow):
         self.refresh_project_shortlists()
         self.projects_list.clear()
         self.environments_list.clear()
+        self.project_details.setText(
+            "Select a project to view its health and development details."
+        )
         environment_count = 0
 
         for project in projects:
@@ -1885,6 +1904,44 @@ class DevSuiteWindow(QMainWindow):
                 self.help_topics_list.setCurrentItem(item)
                 return
         self.help_topics_list.setCurrentRow(0)
+
+    def update_project_details(self, item):
+        if item is None or not item.data(256):
+            self.project_details.setText(
+                "Select a project to view its health and development details."
+            )
+            return
+
+        project = Path(item.data(256))
+        dependencies, scripts = read_project_metadata(project)
+        branch = git_current_branch(project) or "Not a Git repository"
+        try:
+            git_status = subprocess.run(
+                ["git", "status", "--short"],
+                cwd=str(project), capture_output=True, text=True,
+                timeout=5, check=False,
+            )
+            changed_files = len(git_status.stdout.splitlines())
+        except (OSError, subprocess.TimeoutExpired):
+            changed_files = 0
+
+        checks = [
+            ("pyproject.toml", (project / "pyproject.toml").is_file()),
+            ("main.py", (project / "main.py").is_file()),
+            ("virtual environment", self.environment_python(project) is not None),
+            ("tests", (project / "tests").is_dir()),
+        ]
+        health = "  ".join(
+            f"{'✓' if available else '!' } {name}"
+            for name, available in checks
+        )
+        script_text = ", ".join(scripts) if scripts else "none"
+        self.project_details.setText(
+            f"<b>{project.name}</b>  •  branch: {branch}  •  "
+            f"changed files: {changed_files}<br>"
+            f"{health}<br>"
+            f"Dependencies: {len(dependencies)}  •  Scripts: {script_text}"
+        )
 
     def selected_project_path(self, list_widget):
         item = list_widget.currentItem()
@@ -2033,6 +2090,70 @@ class DevSuiteWindow(QMainWindow):
             )
         except OSError as error:
             QMessageBox.critical(self, "Could not run project", str(error))
+
+    def run_project_check(self, project, label, arguments):
+        """Run a project command and display its output without hiding failures."""
+        uv_path = shutil.which("uv")
+        if uv_path and (project / "pyproject.toml").is_file():
+            command = [uv_path, "run", *arguments]
+        else:
+            python_executable = self.environment_python(project)
+            if python_executable is None:
+                QMessageBox.warning(
+                    self, "Environment not found",
+                    "This project has no uv project or virtual environment. "
+                    "Create one before running project checks.",
+                )
+                return
+            command = [str(python_executable), "-m", *arguments]
+
+        try:
+            result = subprocess.run(
+                command,
+                cwd=str(project),
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            QMessageBox.warning(
+                self, f"{label} timed out",
+                f"{label} exceeded the five-minute time limit.",
+            )
+            return
+        except OSError as error:
+            QMessageBox.critical(self, f"Could not run {label.lower()}", str(error))
+            return
+
+        output = (result.stdout or "") + (result.stderr or "")
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{label} • {project.name}")
+        dialog.resize(760, 520)
+        layout = QVBoxLayout(dialog)
+        status = QLabel(
+            f"{label} {'passed' if result.returncode == 0 else 'failed'} "
+            f"(exit code {result.returncode})"
+        )
+        layout.addWidget(status)
+        output_view = QPlainTextEdit()
+        output_view.setReadOnly(True)
+        output_view.setPlainText(output.strip() or "No output was produced.")
+        layout.addWidget(output_view, 1)
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+        dialog.exec_()
+
+    def test_selected_project(self):
+        project = self.selected_project_path(self.projects_list)
+        if project:
+            self.run_project_check(project, "Tests", ["pytest"])
+
+    def lint_selected_project(self):
+        project = self.selected_project_path(self.projects_list)
+        if project:
+            self.run_project_check(project, "Lint", ["ruff", "check", "."])
 
     def inspect_selected_environment(self):
         project = self.selected_project_path(self.environments_list)

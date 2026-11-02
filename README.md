@@ -18,6 +18,10 @@ and practical project shortcuts.
 - Pin favorite projects and keep a list of recent projects.
 - Open project folders, terminals, or projects in VS Code.
 - Run a project's `main.py` with its managed environment.
+- View project health details including Git branch, changed files, project
+  metadata, virtual environment status, and test folder availability.
+- Run project tests with `pytest` and lint checks with `ruff` from the project
+  page, with command output shown in DevSuite.
 - Inspect installed packages in discovered environments.
 - Configure interface density, default project location, default Python version,
   automatic refresh, and project search folders from Settings.
