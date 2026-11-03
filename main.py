@@ -393,6 +393,11 @@ class NewProjectDialog(QDialog):
             "FastAPI web API",
             "Data science project",
         ])
+        self.template_hint = QLabel()
+        self.template_hint.setWordWrap(True)
+        self.template_hint.setStyleSheet("color: #8B949E; font-size: 12px;")
+        self.template.currentTextChanged.connect(self.update_template_hint)
+        self.update_template_hint(self.template.currentText())
 
         form_layout = QFormLayout()
         form_layout.addRow("Project name:", self.project_name)
@@ -412,6 +417,7 @@ class NewProjectDialog(QDialog):
         layout.setSpacing(16)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addLayout(form_layout)
+        layout.addWidget(self.template_hint)
         layout.addWidget(buttons)
 
     def browse_location(self):
@@ -423,6 +429,16 @@ class NewProjectDialog(QDialog):
 
         if folder:
             self.project_location.setText(folder)
+
+    def update_template_hint(self, template_name):
+        hints = {
+            "Basic Python application": "A small application with a starter main.py and test.",
+            "Command-line tool": "Includes argparse-based command-line input handling.",
+            "PyQt desktop application": "Starts with a minimal PyQt5 window.",
+            "FastAPI web API": "Provides a small FastAPI app ready for uvicorn.",
+            "Data science project": "Includes a notebook-friendly starter and test.",
+        }
+        self.template_hint.setText(hints.get(template_name, ""))
 
     def get_project_details(self):
         return (
@@ -1345,6 +1361,8 @@ class DevSuiteWindow(QMainWindow):
         stats_layout.addWidget(self.total_projects_card)
         stats_layout.addWidget(self.environments_card)
         stats_layout.addWidget(self.python_version_card)
+        self.favorites_card = self.create_card("PINNED PROJECTS", "0")
+        stats_layout.addWidget(self.favorites_card)
 
         self.content_layout.addLayout(stats_layout)
 
@@ -1523,6 +1541,25 @@ class DevSuiteWindow(QMainWindow):
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
+        filter_row = QHBoxLayout()
+        self.project_filter_input = QLineEdit()
+        self.project_filter_input.setPlaceholderText(
+            "Search projects by name or path..."
+        )
+        self.project_filter_input.textChanged.connect(
+            self.refresh_workspace_views
+        )
+        filter_row.addWidget(self.project_filter_input, 1)
+        self.project_sort_combo = QComboBox()
+        self.project_sort_combo.addItems(
+            ["Name (A-Z)", "Name (Z-A)", "Recently used", "Pinned first"]
+        )
+        self.project_sort_combo.currentTextChanged.connect(
+            self.refresh_workspace_views
+        )
+        filter_row.addWidget(self.project_sort_combo)
+        layout.addLayout(filter_row)
+
         self.projects_list = QListWidget()
         self.projects_list.setStyleSheet(
             "QListWidget { background-color: #202633; border: 1px solid #303849; "
@@ -1623,6 +1660,9 @@ class DevSuiteWindow(QMainWindow):
         packages_button = QPushButton("Inspect Packages")
         packages_button.clicked.connect(self.inspect_selected_environment)
         actions.addWidget(packages_button)
+        folder_button = QPushButton("Open Project Folder")
+        folder_button.clicked.connect(self.open_selected_environment_folder)
+        actions.addWidget(folder_button)
         layout.addLayout(actions)
         return page
 
@@ -1849,6 +1889,30 @@ class DevSuiteWindow(QMainWindow):
 
     def refresh_workspace_views(self, *_):
         projects = self.discover_projects()
+        search_text = self.project_filter_input.text().strip().casefold()
+        if search_text:
+            projects = [
+                project for project in projects
+                if search_text in project.name.casefold()
+                or search_text in str(project).casefold()
+            ]
+        sort_mode = self.project_sort_combo.currentText()
+        if sort_mode == "Name (Z-A)":
+            projects.sort(key=lambda path: path.name.casefold(), reverse=True)
+        elif sort_mode == "Recently used":
+            recent_order = {
+                path: index for index, path in enumerate(self.recent_projects)
+            }
+            projects.sort(
+                key=lambda path: recent_order.get(str(path), len(recent_order))
+            )
+        elif sort_mode == "Pinned first":
+            projects.sort(
+                key=lambda path: (
+                    str(path) not in self.favorite_projects,
+                    path.name.casefold(),
+                )
+            )
         self.favorite_projects = [
             path for path in self.favorite_projects if Path(path).is_dir()
         ]
@@ -1891,6 +1955,7 @@ class DevSuiteWindow(QMainWindow):
 
         self.total_projects_card.value_label.setText(str(len(projects)))
         self.environments_card.value_label.setText(str(environment_count))
+        self.favorites_card.value_label.setText(str(len(self.favorite_projects)))
 
         if not projects:
             empty = QListWidgetItem(
@@ -2069,6 +2134,11 @@ class DevSuiteWindow(QMainWindow):
         project = self.selected_project_path(self.environments_list)
         if project:
             self.open_project_terminal(project, activate_environment=True)
+
+    def open_selected_environment_folder(self):
+        project = self.selected_project_path(self.environments_list)
+        if project:
+            self.open_path_in_file_manager(project)
 
     def run_selected_project(self):
         project = self.selected_project_path(self.projects_list)
@@ -2564,6 +2634,7 @@ class DevSuiteWindow(QMainWindow):
                 self.default_project_location,
                 self.default_python_version,
                 self.auto_refresh_projects,
+                self.refresh_interval,
                 self.project_search_roots,
             ) = (
                 dialog.get_settings()
@@ -2578,6 +2649,8 @@ class DevSuiteWindow(QMainWindow):
             self.settings.setValue(
                 "auto_refresh_projects", self.auto_refresh_projects
             )
+            self.settings.setValue("refresh_interval", self.refresh_interval)
+            self.refresh_timer.setInterval(self.refresh_interval * 1000)
             if self.auto_refresh_projects:
                 self.refresh_timer.start()
             else:
