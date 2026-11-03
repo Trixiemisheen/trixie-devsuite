@@ -3,7 +3,7 @@
 Trixie DevSuite is a PyQt5 desktop workspace for creating and managing Python
 projects. It provides a dashboard for projects and virtual environments,
 guided project creation with `uv`, package recommendations, an in-app manual,
-and practical project shortcuts.
+and practical project shortcuts. And I know you are asking yourself why I chose `uv` over `pip`. Good question; cause `uv` is 99 times faster than `pip`. And that is the reason.
 
 ## Features
 
