@@ -201,6 +201,17 @@ class SettingsDialog(QDialog):
         )
         settings_layout.addWidget(self.auto_refresh_checkbox)
 
+        settings_layout.addWidget(QLabel("Automatic refresh interval"))
+        self.refresh_interval_combo = QComboBox()
+        self.refresh_interval_combo.addItems(
+            ["15 seconds", "30 seconds", "60 seconds"]
+        )
+        if parent:
+            self.refresh_interval_combo.setCurrentText(
+                f"{parent.refresh_interval} seconds"
+            )
+        settings_layout.addWidget(self.refresh_interval_combo)
+
         # ---- Project search folders ----
         folders_heading = QLabel("Project search folders")
         folders_heading.setStyleSheet(
@@ -279,6 +290,7 @@ class SettingsDialog(QDialog):
             self.project_location_input.text().strip(),
             self.python_version_combo.currentText(),
             self.auto_refresh_checkbox.isChecked(),
+            int(self.refresh_interval_combo.currentText().split()[0]),
             [
                 self.folders_list.item(i).text()
                 for i in range(self.folders_list.count())
@@ -290,6 +302,7 @@ class SettingsDialog(QDialog):
         self.project_location_input.setText(str(Path.home() / "Projects"))
         self.python_version_combo.setCurrentText("3.13")
         self.auto_refresh_checkbox.setChecked(True)
+        self.refresh_interval_combo.setCurrentText("30 seconds")
         self.folders_list.clear()
         self.folders_list.addItem(str(Path.home() / "Projects"))
 
@@ -657,7 +670,7 @@ class WebSearchWorker(QThread):
             )
             request = Request(
                 url,
-                headers={"User-Agent": "TrixieDevSuite/0.6"},
+                headers={"User-Agent": "TrixieDevSuite/0.7.1"},
             )
             with urlopen(request, timeout=12) as response:
                 html = response.read().decode("utf-8", errors="replace")
@@ -1042,8 +1055,11 @@ class DevSuiteWindow(QMainWindow):
         self.auto_refresh_projects = self.settings.value(
             "auto_refresh_projects", True, bool
         )
+        self.refresh_interval = self.settings.value(
+            "refresh_interval", 30, int
+        )
         self.refresh_timer = QTimer(self)
-        self.refresh_timer.setInterval(30_000)
+        self.refresh_timer.setInterval(self.refresh_interval * 1000)
         self.refresh_timer.timeout.connect(self.refresh_workspace_views)
         if self.auto_refresh_projects:
             self.refresh_timer.start()
@@ -1280,7 +1296,7 @@ class DevSuiteWindow(QMainWindow):
         settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite • v0.6.0")
+        version = QLabel("Trixie DevSuite • v0.7.1")
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
         )
