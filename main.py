@@ -575,7 +575,7 @@ HELP_TOPICS = {
         "send your project idea to an online service.\n\n"
         "Created by Trixie Misheen\n"
         "Use the buttons below to visit the official social and project links.\n\n"
-        "Version: 0.6.0"
+        "Version: 0.7.1"
     ),
 }
 
