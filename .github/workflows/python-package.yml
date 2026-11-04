@@ -1,0 +1,52 @@
+name: Trixie DevSuite CI
+
+on:
+push:
+branches: ["main"]
+pull_request:
+branches: ["main"]
+
+permissions:
+contents: read
+
+jobs:
+test:
+name: Python ${{ matrix.python-version }}
+runs-on: ubuntu-latest
+
+```
+strategy:
+  fail-fast: false
+  matrix:
+    python-version: ["3.11", "3.12", "3.13"]
+
+steps:
+  - name: Check out repository
+    uses: actions/checkout@v4
+
+  - name: Set up Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: ${{ matrix.python-version }}
+      cache: pip
+
+  - name: Install DevSuite and CI tools
+    run: |
+      python -m pip install --upgrade pip
+      python -m pip install "PyQt5==5.15.10" "psutil==7.2.2" pytest flake8
+
+  - name: Check Python syntax
+    run: python -m compileall -q .
+
+  - name: Lint critical errors
+    run: |
+      flake8 . \
+        --count \
+        --select=E9,F63,F7,F82 \
+        --show-source \
+        --statistics \
+        --exclude=.git,.venv,venv,build,dist
+
+  - name: Run tests
+    run: python -m pytest -q
+```
