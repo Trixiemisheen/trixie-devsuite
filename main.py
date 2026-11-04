@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import shutil
@@ -245,6 +246,15 @@ class SettingsDialog(QDialog):
         tools_button.clicked.connect(self.check_tool_status)
         settings_layout.addWidget(tools_button)
 
+        portability_row = QHBoxLayout()
+        export_button = QPushButton("Export settings")
+        export_button.clicked.connect(self.export_settings)
+        import_button = QPushButton("Import settings")
+        import_button.clicked.connect(self.import_settings)
+        portability_row.addWidget(export_button)
+        portability_row.addWidget(import_button)
+        settings_layout.addLayout(portability_row)
+
         reset_button = QPushButton("Reset settings to defaults")
         reset_button.clicked.connect(self.reset_defaults)
         settings_layout.addWidget(reset_button)
@@ -295,6 +305,111 @@ class SettingsDialog(QDialog):
                 self.folders_list.item(i).text()
                 for i in range(self.folders_list.count())
             ],
+        )
+
+    def export_settings(self):
+        path, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Export DevSuite settings",
+            str(Path.home() / "devsuite-settings.json"),
+            "JSON files (*.json)",
+        )
+        if not path:
+            return
+
+        density, location, python_version, auto_refresh, interval, roots = (
+            self.get_settings()
+        )
+        data = {
+            "format": "trixie-devsuite-settings",
+            "version": 1,
+            "interface_density": density,
+            "default_project_location": location,
+            "default_python_version": python_version,
+            "auto_refresh_projects": auto_refresh,
+            "refresh_interval": interval,
+            "project_search_roots": roots,
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, indent=2)
+                handle.write("\n")
+        except OSError as error:
+            QMessageBox.critical(
+                self, "Could not export settings", str(error)
+            )
+            return
+        QMessageBox.information(
+            self, "Settings exported", f"Settings were saved to:\n{path}"
+        )
+
+    def import_settings(self):
+        path, _filter = QFileDialog.getOpenFileName(
+            self,
+            "Import DevSuite settings",
+            str(Path.home()),
+            "JSON files (*.json)",
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, json.JSONDecodeError) as error:
+            QMessageBox.critical(
+                self, "Could not import settings",
+                f"The selected file is not valid JSON:\n{error}",
+            )
+            return
+
+        if not isinstance(data, dict) or data.get(
+            "format"
+        ) != "trixie-devsuite-settings":
+            QMessageBox.warning(
+                self, "Unsupported settings file",
+                "This file is not a DevSuite settings export.",
+            )
+            return
+
+        density = data.get("interface_density")
+        location = data.get("default_project_location")
+        python_version = data.get("default_python_version")
+        auto_refresh = data.get("auto_refresh_projects")
+        interval = data.get("refresh_interval")
+        roots = data.get("project_search_roots")
+        valid = (
+            density in {"Comfortable", "Compact"}
+            and isinstance(location, str) and bool(location.strip())
+            and python_version in {"3.12", "3.13", "3.14"}
+            and isinstance(auto_refresh, bool)
+            and interval in {15, 30, 60}
+            and isinstance(roots, list)
+            and all(isinstance(root, str) and root.strip() for root in roots)
+        )
+        if not valid:
+            QMessageBox.warning(
+                self, "Invalid settings file",
+                "The export is missing settings or contains unsupported values.",
+            )
+            return
+
+        self.density_combo.setCurrentText(density)
+        self.project_location_input.setText(location.strip())
+        self.python_version_combo.setCurrentText(python_version)
+        self.auto_refresh_checkbox.setChecked(auto_refresh)
+        self.refresh_interval_combo.setCurrentText(f"{interval} seconds")
+        self.folders_list.clear()
+        for root in roots:
+            normalized = str(Path(root).expanduser())
+            if normalized not in {
+                self.folders_list.item(index).text()
+                for index in range(self.folders_list.count())
+            }:
+                self.folders_list.addItem(normalized)
+        QMessageBox.information(
+            self, "Settings imported",
+            "Settings were loaded into this dialog. Select Save to apply them.",
         )
 
     def reset_defaults(self):

@@ -29,6 +29,7 @@ and practical project shortcuts. And I know you are asking yourself why I chose 
 - Inspect installed packages in discovered environments.
 - Configure interface density, default project location, default Python version,
   automatic refresh, and project search folders from Settings.
+- Export and import portable JSON settings from the Settings dialog.
 - Check the availability of Python, `uv`, Git, VS Code, and PowerShell.
 - Browse a searchable offline manual with troubleshooting and project guidance.
 - Search the internet from the Help page; unavailable results open in the
