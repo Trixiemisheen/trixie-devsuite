@@ -1,91 +1,133 @@
+<div align="center">
+
 # Trixie DevSuite
 
-Trixie DevSuite is a PyQt5 desktop workspace for creating and managing Python
-projects. It provides a dashboard for projects and virtual environments,
-guided project creation with `uv`, package recommendations, an in-app manual,
-and practical project shortcuts. And I know you are asking yourself why I chose `uv` over `pip`. Good question; cause `uv` is 99 times faster than `pip`. And that is the reason.
+### A focused Python workspace for creating, discovering, and managing projects.
 
-## Features
+<p>
+  <img src="https://img.shields.io/badge/Python-3.14%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.14 or newer">
+  <img src="https://img.shields.io/badge/PyQt5-desktop%20UI-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="PyQt5">
+  <img src="https://img.shields.io/badge/uv-powered-DE5FE9?style=for-the-badge" alt="uv powered">
+  <img src="https://img.shields.io/badge/Platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
+</p>
 
-- Create Python application projects with Python 3.12, 3.13, or 3.14.
-- Initialize projects with Git, a `pyproject.toml`, and a virtual environment.
-- Start projects from Basic Python, CLI, PyQt, FastAPI, or data science templates.
-- Choose packages from recommendations based on the project type and idea.
-- Install recommended packages individually so one unavailable package does not
-  prevent the remaining packages from being installed.
-- Report installed and failed packages when setup needs attention.
+<p>
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#what-it-does">Features</a> ·
+  <a href="#creating-a-project">Create a project</a> ·
+  <a href="#development">Development</a>
+</p>
+
+</div>
+
+> **Trixie DevSuite** is an offline-first PyQt5 desktop workspace for Python
+> developers. It combines project creation, environment discovery, package
+> recommendations, Git shortcuts, health checks, and an in-app manual in one
+> focused dashboard.
+
+## At a glance
+
+| Workspace | Capabilities |
+| --- | --- |
+| **Create** | Start Basic Python, CLI, PyQt, FastAPI, or data science projects |
+| **Discover** | Find projects and virtual environments in configured folders |
+| **Develop** | Run projects, tests, lint checks, terminals, and VS Code |
+| **Manage** | Inspect packages, update dependencies, and upgrade `uv.lock` |
+| **Collaborate** | Review Git status and history, switch branches, and commit changes |
+| **Monitor** | Track project health, CPU, RAM, time, tools, Git branch, and connectivity |
+
+## What it does
+
+### Project creation
+
+- Initialize projects with Git, `pyproject.toml`, and a virtual environment.
+- Select a Python version and starter template.
+- Get package recommendations based on project type and idea.
+- Install recommendations individually so one unavailable package does not
+  block the rest.
+- See installed and failed packages when setup needs attention.
+
+### Project workspace
+
 - Discover projects in configured folders and one level of subfolders.
-- Pin favorite projects and keep a list of recent projects.
-- Open project folders, terminals, or projects in VS Code.
+- Pin favorites and keep a list of recent projects.
+- Open folders, terminals, or projects in VS Code.
 - Run a project's `main.py` with its managed environment.
-- View project health details including Git branch, changed files, project
-  metadata, virtual environment status, and test folder availability.
-- Run project tests with `pytest` and lint checks with `ruff` from the project
-  page, with command output shown in DevSuite.
-- Inspect installed packages, add or remove dependencies, and upgrade a
-  project's `uv.lock` file from the Projects page.
-- Inspect Git status and recent history, review the current branch, and commit
-  project changes from the Git Workspace.
+- View Git branch, changed files, metadata, environment, and test-folder health.
+- Run `pytest` and `ruff` with command output shown inside DevSuite.
+- Inspect installed packages, add or remove dependencies, and upgrade `uv.lock`.
+
+### Git and environments
+
+- Inspect Git status and recent history from Git Workspace.
+- Review the current branch and commit project changes.
 - Inspect installed packages in discovered environments.
-- Configure interface density, default project location, default Python version,
-  automatic refresh, and project search folders from Settings.
-- Export and import portable JSON settings from the Settings dialog.
-- Check the availability of Python, `uv`, Git, VS Code, and PowerShell.
-- Use the persistent status bar to see the current page, discovered project
-  count, available tool count, missing-tool details, selected Git branch, and
-  last workspace refresh time. It also shows the current day and time, live CPU
-  and RAM usage, and an online/offline connectivity indicator.
-- Browse a searchable offline manual with troubleshooting and project guidance.
-- Search the internet from the Help page; unavailable results open in the
-  default browser automatically.
-- Open official installation and package links for `uv`, PyPI, Git, PowerShell,
-  Windows Terminal, and VS Code.
-- Visit the owner's Telegram, Instagram, WhatsApp, and GitHub links.
+- Open a project terminal with its virtual environment activated.
+
+### Settings and status
+
+- Configure interface density, sidebar width, and startup page.
+- Set the default project location and Python version.
+- Configure automatic refresh and project search folders.
+- Export and import portable JSON settings.
+- See current day and time, CPU and RAM usage, available tools, selected branch,
+  project count, refresh time, and online/offline status in the status bar.
+
+### Help
+
+- Browse a searchable offline manual.
+- Read troubleshooting and project guidance.
+- Search the internet from Help using DuckDuckGo.
+- Fall back to a Google search in the default browser when needed.
+- Open official links for `uv`, PyPI, Git, PowerShell, Windows Terminal, and
+  VS Code.
 
 ## Requirements
 
-- Python 3.14 or newer
+- Python **3.14 or newer**
 - [`uv`](https://docs.astral.sh/uv/) on your `PATH`
-- PyQt5-compatible desktop environment
+- A PyQt5-compatible desktop environment
 
-The application currently targets Windows, but terminal integration also
-supports common Linux and macOS terminal launchers where available.
+DevSuite currently targets Windows. Terminal integration also supports common
+Linux and macOS terminal launchers where available.
 
-## Installation
+## Quick start
 
-Clone the repository and enter its directory:
+### 1. Clone the repository
 
 ```powershell
 git clone https://github.com/Trixiemisheen/trixie-devsuite.git
 cd trixie-devsuite
 ```
 
-Create the environment and install the project dependencies with `uv`:
+### 2. Install dependencies
 
 ```powershell
 uv sync
 ```
 
-## Run
-
-Start DevSuite from the repository root:
+### 3. Launch DevSuite
 
 ```powershell
 uv run python main.py
 ```
 
-If you are not using `uv`, run the application with a Python 3.14+
-interpreter after installing the dependencies declared in
-[`pyproject.toml`](pyproject.toml):
+<details>
+<summary>Run without uv</summary>
+
+Install the dependencies declared in [`pyproject.toml`](pyproject.toml), then
+run:
 
 ```powershell
 python main.py
 ```
 
+</details>
+
 ## Creating a project
 
 1. Select **New Project** or **Create a New Python Project**.
-2. Enter a project name and choose its location and Python version.
+2. Enter a project name, location, and Python version.
 3. Choose a starter template.
 4. Select a project type and optionally describe the project idea.
 5. Review the package recommendations.
@@ -93,60 +135,54 @@ python main.py
 
 DevSuite uses `uv init`, `uv sync`, and `uv add` during setup. Make sure `uv`
 is installed and available on `PATH` before creating a project.
-If individual package installation fails, DevSuite continues with the remaining
-packages and shows the failed package names after setup.
+
+> If an individual package fails to install, setup continues with the remaining
+> packages and reports the failed package names afterward.
 
 ## Project discovery
 
 By default, DevSuite searches the `Projects` folder in your home directory.
-Additional search folders can be configured under **Settings → Project search
-folders**. The **My Projects** and **Environments** pages can be refreshed
-after changing these locations. Double-click a pinned or recent project on the
-dashboard to open its folder.
+Configure additional locations under **Settings → Project search folders**.
+Refresh **My Projects** or **Environments** after changing these locations.
 
-## Help and online search
+Double-click a pinned or recent project on the dashboard to open its folder.
 
-Open **Help** from the sidebar or press **Ctrl+H**. The Help page includes:
+## Keyboard shortcuts
 
-- A searchable manual for project creation, environments, settings, and
-  troubleshooting.
-- Official resource links for common missing tools and packages.
-- Internet search powered by DuckDuckGo.
-- Automatic fallback to a Google search in the default browser when an online
-  query fails or returns no usable result.
-
-Online search requires an internet connection. The app remains usable offline
-for its built-in manual and project management features.
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+H` | Open Help |
 
 ## Settings
 
-The Settings dialog is compact and scrollable. It supports:
+The scrollable Settings dialog supports:
 
-- Comfortable or Compact interface density.
-- Narrow, Standard, or Wide sidebar width.
-- Choose Dashboard, My Projects, Environments, or Help as the startup page.
-- Default project location and Python version.
-- Automatic workspace refresh every 30 seconds.
-- Project search folders.
-- Tool availability checks.
-- Resetting settings to defaults.
-
-## Owner links
-
-- Telegram: <https://t.me/Trixie_Misheen>
-- Instagram: <https://instagram.com/trixiemisheen>
-- WhatsApp: <https://wa.me/254791915925>
-- GitHub: <https://github.com/trixiemisheen/>
+- Comfortable or Compact interface density
+- Narrow, Standard, or Wide sidebar width
+- Dashboard, My Projects, Environments, or Help as the startup page
+- Default project location and Python version
+- Automatic refresh and refresh interval
+- Project search folders
+- Tool availability checks
+- JSON settings export and import
+- Resetting settings to defaults
 
 ## Development
 
-The application entry point is [`main.py`](main.py). To check that the source
-compiles without launching the GUI:
+The application entry point is [`main.py`](main.py). Compile-check the source
+without launching the GUI:
 
 ```powershell
 python -m py_compile main.py
 ```
 
+## Owner links
+
+- [Telegram](https://t.me/Trixie_Misheen)
+- [Instagram](https://instagram.com/trixiemisheen)
+- [WhatsApp](https://wa.me/254791915925)
+- [GitHub](https://github.com/trixiemisheen/)
+
 ## License
 
-No license has been specified for this repository yet
+No license has been specified for this repository yet.
