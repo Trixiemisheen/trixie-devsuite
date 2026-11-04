@@ -158,6 +158,7 @@ Double-click a pinned or recent project on the dashboard to open its folder.
 The scrollable Settings dialog supports:
 
 - Comfortable or Compact interface density
+- Developer color themes: Dev Cyan, Monokai, and Nord
 - Narrow, Standard, or Wide sidebar width
 - Dashboard, My Projects, Environments, or Help as the startup page
 - Default project location and Python version

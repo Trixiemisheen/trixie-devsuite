@@ -54,6 +54,78 @@ APP_ORG = "TrixieMisheen"
 APP_NAME = "DevSuite"
 SEARCH_ROOTS_KEY = "project_search_roots"
 
+THEME_COLOR_MAPS = {
+    "Dev Cyan": {},
+    "Monokai": {
+        "#151821": "#272822",
+        "#11141C": "#1E1F1C",
+        "#202633": "#3E3D32",
+        "#293548": "#49483E",
+        "#303849": "#75715E",
+        "#2A3040": "#49483E",
+        "#E6EDF3": "#F8F8F2",
+        "#8B949E": "#A6A39A",
+        "#00E5FF": "#A6E22E",
+        "#00B8D4": "#66D9EF",
+        "#10141C": "#272822",
+        "#182B3D": "#30302B",
+        "#24506A": "#75715E",
+        "#7DEBFF": "#E6DB74",
+        "#F4FBFF": "#F8F8F2",
+        "#A9C6D4": "#C6C5B9",
+        "#3B5265": "#75715E",
+        "#111A24": "#1E1F1C",
+        "#2B3C4B": "#49483E",
+        "#AFC1CC": "#C6C5B9",
+        "#1D3444": "#49483E",
+        "#0B687E": "#F92672",
+        "#FFFFFF": "#F8F8F2",
+        "#1B222E": "#30302B",
+        "#DCEAF1": "#F8F8F2",
+        "#146A80": "#F92672",
+        "#164653": "#49483E",
+        "#697586": "#A6A39A",
+    },
+    "Nord": {
+        "#151821": "#2E3440",
+        "#11141C": "#242933",
+        "#202633": "#3B4252",
+        "#293548": "#434C5E",
+        "#303849": "#4C566A",
+        "#2A3040": "#4C566A",
+        "#E6EDF3": "#ECEFF4",
+        "#8B949E": "#D8DEE9",
+        "#00E5FF": "#88C0D0",
+        "#00B8D4": "#81A1C1",
+        "#10141C": "#2E3440",
+        "#182B3D": "#3B4252",
+        "#24506A": "#5E81AC",
+        "#7DEBFF": "#8FBCBB",
+        "#F4FBFF": "#ECEFF4",
+        "#A9C6D4": "#D8DEE9",
+        "#3B5265": "#4C566A",
+        "#111A24": "#242933",
+        "#2B3C4B": "#4C566A",
+        "#AFC1CC": "#D8DEE9",
+        "#1D3444": "#434C5E",
+        "#0B687E": "#5E81AC",
+        "#FFFFFF": "#ECEFF4",
+        "#1B222E": "#3B4252",
+        "#DCEAF1": "#E5E9F0",
+        "#146A80": "#5E81AC",
+        "#164653": "#434C5E",
+        "#697586": "#A3BE8C",
+    },
+}
+
+
+def apply_theme_stylesheet(stylesheet, theme_name):
+    replacements = THEME_COLOR_MAPS.get(theme_name, {})
+    if not replacements:
+        return stylesheet
+    pattern = re.compile("|".join(map(re.escape, replacements)))
+    return pattern.sub(lambda match: replacements[match.group()], stylesheet)
+
 
 def read_project_metadata(project_path):
     """Extract dependency names and script entry-points from pyproject.toml."""
@@ -182,6 +254,13 @@ class SettingsDialog(QDialog):
             self.density_combo.setCurrentText(parent.interface_density)
 
         settings_layout.addWidget(self.density_combo)
+
+        settings_layout.addWidget(QLabel("Developer color theme"))
+        self.color_theme_combo = QComboBox()
+        self.color_theme_combo.addItems(list(THEME_COLOR_MAPS))
+        if parent:
+            self.color_theme_combo.setCurrentText(parent.color_theme)
+        settings_layout.addWidget(self.color_theme_combo)
 
         settings_layout.addWidget(QLabel("Sidebar width"))
         self.sidebar_width_combo = QComboBox()
@@ -323,6 +402,7 @@ class SettingsDialog(QDialog):
     def get_settings(self):
         return (
             self.density_combo.currentText(),
+            self.color_theme_combo.currentText(),
             self.sidebar_width_combo.currentText(),
             self.startup_page_combo.currentText(),
             self.project_location_input.text().strip(),
@@ -347,6 +427,7 @@ class SettingsDialog(QDialog):
 
         (
             density,
+            color_theme,
             sidebar_width,
             startup_page,
             location,
@@ -361,6 +442,7 @@ class SettingsDialog(QDialog):
             "format": "trixie-devsuite-settings",
             "version": 1,
             "interface_density": density,
+            "color_theme": color_theme,
             "sidebar_width": sidebar_width,
             "startup_page": startup_page,
             "default_project_location": location,
@@ -412,6 +494,7 @@ class SettingsDialog(QDialog):
             return
 
         density = data.get("interface_density")
+        color_theme = data.get("color_theme", "Dev Cyan")
         sidebar_width = data.get("sidebar_width", "Standard")
         startup_page = data.get("startup_page", "Dashboard")
         location = data.get("default_project_location")
@@ -421,6 +504,7 @@ class SettingsDialog(QDialog):
         roots = data.get("project_search_roots")
         valid = (
             density in {"Comfortable", "Compact"}
+            and color_theme in THEME_COLOR_MAPS
             and sidebar_width in {"Narrow", "Standard", "Wide"}
             and startup_page in {"Dashboard", "My Projects", "Environments", "Help"}
             and isinstance(location, str) and bool(location.strip())
@@ -438,6 +522,7 @@ class SettingsDialog(QDialog):
             return
 
         self.density_combo.setCurrentText(density)
+        self.color_theme_combo.setCurrentText(color_theme)
         self.sidebar_width_combo.setCurrentText(sidebar_width)
         self.startup_page_combo.setCurrentText(startup_page)
         self.project_location_input.setText(location.strip())
@@ -459,6 +544,7 @@ class SettingsDialog(QDialog):
 
     def reset_defaults(self):
         self.density_combo.setCurrentText("Comfortable")
+        self.color_theme_combo.setCurrentText("Dev Cyan")
         self.sidebar_width_combo.setCurrentText("Standard")
         self.startup_page_combo.setCurrentText("Dashboard")
         self.project_location_input.setText(str(Path.home() / "Projects"))
@@ -1238,6 +1324,9 @@ class DevSuiteWindow(QMainWindow):
         self.interface_density = self.settings.value(
             "interface_density", "Comfortable", str
         )
+        self.color_theme = self.settings.value(
+            "color_theme", "Dev Cyan", str
+        )
         self.sidebar_width = self.settings.value(
             "sidebar_width", "Standard", str
         )
@@ -1266,7 +1355,7 @@ class DevSuiteWindow(QMainWindow):
         if self.auto_refresh_projects:
             self.refresh_timer.start()
 
-        self.setStyleSheet("""
+        self.base_stylesheet = """
             QMainWindow, QWidget {
                 background-color: #151821;
                 color: #E6EDF3;
@@ -1452,15 +1541,21 @@ class DevSuiteWindow(QMainWindow):
                 border-color: #00B8D4;
                 color: #FFFFFF;
             }
-        """)
+        """
+        self.setStyleSheet(
+            apply_theme_stylesheet(self.base_stylesheet, self.color_theme)
+        )
 
         central = QWidget()
         self.setCentralWidget(central)
         self.statusBar().showMessage("Ready")
         self.statusBar().setStyleSheet(
-            "QStatusBar { background-color: #11141C; color: #8B949E; "
+            apply_theme_stylesheet(
+                "QStatusBar { background-color: #11141C; color: #8B949E; "
             "border-top: 1px solid #2A3040; }"
-            "QStatusBar::item { border: none; }"
+            "QStatusBar::item { border: none; }",
+                self.color_theme,
+            )
         )
         self.status_page_label = QLabel("Page: Dashboard")
         self.status_project_label = QLabel("Projects: 0")
@@ -2948,6 +3043,7 @@ class DevSuiteWindow(QMainWindow):
         if dialog.exec_() == QDialog.Accepted:
             (
                 self.interface_density,
+                self.color_theme,
                 self.sidebar_width,
                 self.startup_page,
                 self.default_project_location,
@@ -2959,6 +3055,7 @@ class DevSuiteWindow(QMainWindow):
                 dialog.get_settings()
             )
             self.settings.setValue("interface_density", self.interface_density)
+            self.settings.setValue("color_theme", self.color_theme)
             self.settings.setValue("sidebar_width", self.sidebar_width)
             self.settings.setValue("startup_page", self.startup_page)
             self.settings.setValue(
@@ -2977,6 +3074,17 @@ class DevSuiteWindow(QMainWindow):
             else:
                 self.refresh_timer.stop()
             self.save_search_roots()
+            self.setStyleSheet(
+                apply_theme_stylesheet(self.base_stylesheet, self.color_theme)
+            )
+            self.statusBar().setStyleSheet(
+                apply_theme_stylesheet(
+                    "QStatusBar { background-color: #11141C; color: #8B949E; "
+                    "border-top: 1px solid #2A3040; }"
+                    "QStatusBar::item { border: none; }",
+                    self.color_theme,
+                )
+            )
             self.update_responsive_layout()
             self.refresh_workspace_views()
 
