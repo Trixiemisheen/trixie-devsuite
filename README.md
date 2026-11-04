@@ -32,7 +32,8 @@ and practical project shortcuts. And I know you are asking yourself why I chose 
 - Export and import portable JSON settings from the Settings dialog.
 - Check the availability of Python, `uv`, Git, VS Code, and PowerShell.
 - Use the persistent status bar to see the current page, discovered project
-  count, available tool count, and last workspace refresh time.
+  count, available tool count, missing-tool details, selected Git branch, and
+  last workspace refresh time.
 - Browse a searchable offline manual with troubleshooting and project guidance.
 - Search the internet from the Help page; unavailable results open in the
   default browser automatically.

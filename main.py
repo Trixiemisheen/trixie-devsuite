@@ -1437,11 +1437,13 @@ class DevSuiteWindow(QMainWindow):
         self.status_page_label = QLabel("Page: Dashboard")
         self.status_project_label = QLabel("Projects: 0")
         self.status_tools_label = QLabel("Tools: checking...")
+        self.status_branch_label = QLabel("Branch: none selected")
         self.status_refresh_label = QLabel("Last refresh: never")
         for label in (
             self.status_page_label,
             self.status_project_label,
             self.status_tools_label,
+            self.status_branch_label,
             self.status_refresh_label,
         ):
             label.setStyleSheet("padding: 0 8px; color: #8B949E;")
@@ -2147,19 +2149,31 @@ class DevSuiteWindow(QMainWindow):
             )
             empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
             self.environments_list.addItem(empty)
-        tool_count = sum(
-            shutil.which(tool) is not None
-            for tool in ("uv", "git", "code")
-        )
-        if os.name == "nt" and (
-            shutil.which("pwsh") or shutil.which("powershell")
-        ):
-            tool_count += 1
+        tool_paths = {
+            "uv": shutil.which("uv"),
+            "git": shutil.which("git"),
+            "VS Code": shutil.which("code"),
+            "PowerShell": (
+                shutil.which("pwsh") or shutil.which("powershell")
+                if os.name == "nt"
+                else shutil.which("x-terminal-emulator")
+            ),
+        }
+        tool_count = sum(path is not None for path in tool_paths.values())
+        missing_tools = [
+            name for name, path in tool_paths.items() if path is None
+        ]
         self.status_project_label.setText(f"Projects: {len(projects)}")
         self.status_tools_label.setText(f"Tools: {tool_count}/4")
+        self.status_tools_label.setToolTip(
+            "All core tools available."
+            if not missing_tools
+            else "Missing: " + ", ".join(missing_tools)
+        )
         self.status_refresh_label.setText(
             f"Last refresh: {QTime.currentTime().toString('HH:mm:ss')}"
         )
+        self.status_branch_label.setText("Branch: none selected")
         self.statusBar().showMessage("Workspace refreshed", 3000)
 
     def show_dashboard(self):
@@ -2192,11 +2206,16 @@ class DevSuiteWindow(QMainWindow):
             self.project_details.setText(
                 "Select a project to view its health and development details."
             )
+            self.status_branch_label.setText("Branch: none selected")
             return
 
         project = Path(item.data(256))
         dependencies, scripts = read_project_metadata(project)
         branch = git_current_branch(project) or "Not a Git repository"
+        self.status_branch_label.setText(f"Branch: {branch}")
+        self.statusBar().showMessage(
+            f"Selected project: {project.name}", 3000
+        )
         try:
             git_status = subprocess.run(
                 ["git", "status", "--short"],
