@@ -11,7 +11,17 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-from PyQt5.QtCore import Qt, QSettings, QThread, QTime, QTimer, pyqtSignal
+import psutil
+
+from PyQt5.QtCore import (
+    QDateTime,
+    Qt,
+    QSettings,
+    QThread,
+    QTime,
+    QTimer,
+    pyqtSignal,
+)
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
     QApplication,
@@ -849,6 +859,24 @@ class WebSearchWorker(QThread):
             self.completed.emit({"success": False, "error": str(error)})
 
 
+class ConnectivityWorker(QThread):
+    completed = pyqtSignal(bool)
+
+    def run(self):
+        try:
+            request = Request(
+                "https://connectivitycheck.gstatic.com/generate_204",
+                method="HEAD",
+                headers={"User-Agent": "TrixieDevSuite/0.7.1"},
+            )
+            with urlopen(request, timeout=5):
+                pass
+        except (OSError, ValueError):
+            self.completed.emit(False)
+        else:
+            self.completed.emit(True)
+
+
 class PackageAdvisorDialog(QDialog):
     """Step 2 of the New Project flow: rule-based offline package picks."""
 
@@ -1438,16 +1466,32 @@ class DevSuiteWindow(QMainWindow):
         self.status_project_label = QLabel("Projects: 0")
         self.status_tools_label = QLabel("Tools: checking...")
         self.status_branch_label = QLabel("Branch: none selected")
+        self.status_datetime_label = QLabel("Loading date and time...")
+        self.status_usage_label = QLabel("CPU: --%  RAM: --%")
+        self.status_online_label = QLabel("Online: checking...")
         self.status_refresh_label = QLabel("Last refresh: never")
         for label in (
             self.status_page_label,
             self.status_project_label,
             self.status_tools_label,
             self.status_branch_label,
+            self.status_datetime_label,
+            self.status_usage_label,
+            self.status_online_label,
             self.status_refresh_label,
         ):
             label.setStyleSheet("padding: 0 8px; color: #8B949E;")
             self.statusBar().addPermanentWidget(label)
+
+        self.status_clock_timer = QTimer(self)
+        self.status_clock_timer.timeout.connect(self.update_status_clock)
+        self.status_clock_timer.start(1000)
+        self.status_usage_timer = QTimer(self)
+        self.status_usage_timer.timeout.connect(self.update_status_usage)
+        self.status_usage_timer.start(2000)
+        self.connectivity_timer = QTimer(self)
+        self.connectivity_timer.timeout.connect(self.check_connectivity)
+        self.connectivity_timer.start(30000)
 
         self.root_layout = QHBoxLayout(central)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
@@ -1594,6 +1638,9 @@ class DevSuiteWindow(QMainWindow):
         self.refresh_workspace_views()
         self.update_responsive_layout()
         self.apply_startup_page()
+        self.update_status_clock()
+        self.update_status_usage()
+        self.check_connectivity()
 
     # ---- Settings helpers ----
 
@@ -2065,6 +2112,52 @@ class DevSuiteWindow(QMainWindow):
             if candidate.is_file():
                 return candidate
         return None
+
+    def update_status_clock(self):
+        now = QDateTime.currentDateTime()
+        self.status_datetime_label.setText(
+            now.toString("ddd, dd MMM yyyy  •  HH:mm:ss")
+        )
+
+    def update_status_usage(self):
+        cpu_percent = psutil.cpu_percent()
+        memory_percent = psutil.virtual_memory().percent
+        self.status_usage_label.setText(
+            f"CPU: {cpu_percent:.0f}%  RAM: {memory_percent:.0f}%"
+        )
+        self.status_usage_label.setToolTip(
+            "Current system resource usage. Updated every 2 seconds."
+        )
+
+    def check_connectivity(self):
+        worker = getattr(self, "connectivity_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        self.status_online_label.setText("Online: checking...")
+        self.connectivity_worker = ConnectivityWorker()
+        self.connectivity_worker.completed.connect(
+            self.update_connectivity_status
+        )
+        self.connectivity_worker.finished.connect(self.clear_connectivity_worker)
+        self.connectivity_worker.start()
+
+    def clear_connectivity_worker(self):
+        worker = self.connectivity_worker
+        self.connectivity_worker = None
+        if worker is not None:
+            worker.deleteLater()
+
+    def update_connectivity_status(self, online):
+        if online:
+            self.status_online_label.setText("Online: yes")
+            self.status_online_label.setToolTip(
+                "Internet connectivity check succeeded."
+            )
+        else:
+            self.status_online_label.setText("Online: no")
+            self.status_online_label.setToolTip(
+                "Internet connectivity check failed or timed out."
+            )
 
     def refresh_workspace_views(self, *_):
         projects = self.discover_projects()

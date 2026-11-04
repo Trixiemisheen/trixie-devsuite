@@ -33,7 +33,8 @@ and practical project shortcuts. And I know you are asking yourself why I chose 
 - Check the availability of Python, `uv`, Git, VS Code, and PowerShell.
 - Use the persistent status bar to see the current page, discovered project
   count, available tool count, missing-tool details, selected Git branch, and
-  last workspace refresh time.
+  last workspace refresh time. It also shows the current day and time, live CPU
+  and RAM usage, and an online/offline connectivity indicator.
 - Browse a searchable offline manual with troubleshooting and project guidance.
 - Search the internet from the Help page; unavailable results open in the
   default browser automatically.
