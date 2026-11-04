@@ -34,7 +34,7 @@
 | **Develop** | Run projects, tests, lint checks, terminals, and VS Code |
 | **Manage** | Inspect packages, update dependencies, and upgrade `uv.lock` |
 | **Collaborate** | Review Git status and history, switch branches, and commit changes |
-| **Monitor** | Track project health, CPU, RAM, time, tools, Git branch, and connectivity |
+| **Monitor** | Track project health, CPU, RAM, time, tools, Git branch, and network strength |
 
 ## What it does
 
@@ -71,7 +71,8 @@
 - Configure automatic refresh and project search folders.
 - Export and import portable JSON settings.
 - See current day and time, CPU and RAM usage, available tools, selected branch,
-  project count, refresh time, and online/offline status in the status bar.
+  project count, refresh time, and a response-time-based network strength meter
+  in the status bar.
 
 ### Help
 

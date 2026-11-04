@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 import webbrowser
 from html.parser import HTMLParser
@@ -946,9 +947,10 @@ class WebSearchWorker(QThread):
 
 
 class ConnectivityWorker(QThread):
-    completed = pyqtSignal(bool)
+    completed = pyqtSignal(object)
 
     def run(self):
+        started = time.perf_counter()
         try:
             request = Request(
                 "https://connectivitycheck.gstatic.com/generate_204",
@@ -958,9 +960,12 @@ class ConnectivityWorker(QThread):
             with urlopen(request, timeout=5):
                 pass
         except (OSError, ValueError):
-            self.completed.emit(False)
+            self.completed.emit({"online": False})
         else:
-            self.completed.emit(True)
+            self.completed.emit({
+                "online": True,
+                "latency_ms": round((time.perf_counter() - started) * 1000),
+            })
 
 
 class PackageAdvisorDialog(QDialog):
@@ -1563,7 +1568,7 @@ class DevSuiteWindow(QMainWindow):
         self.status_branch_label = QLabel("Branch: none selected")
         self.status_datetime_label = QLabel("Loading date and time...")
         self.status_usage_label = QLabel("CPU: --%  RAM: --%")
-        self.status_online_label = QLabel("Online: checking...")
+        self.status_online_label = QLabel("Network: ▱▱▱▱")
         self.status_refresh_label = QLabel("Last refresh: never")
         for label in (
             self.status_page_label,
@@ -2242,17 +2247,31 @@ class DevSuiteWindow(QMainWindow):
         if worker is not None:
             worker.deleteLater()
 
-    def update_connectivity_status(self, online):
-        if online:
-            self.status_online_label.setText("Online: yes")
+    def update_connectivity_status(self, result):
+        if not result.get("online"):
+            self.status_online_label.setText("Network: ▱▱▱▱ offline")
             self.status_online_label.setToolTip(
-                "Internet connectivity check succeeded."
+                "No internet response received. The check timed out or failed."
             )
+            return
+
+        latency_ms = result["latency_ms"]
+        if latency_ms < 100:
+            bars = "▰▰▰▰"
+            strength = "Excellent"
+        elif latency_ms < 250:
+            bars = "▰▰▰▱"
+            strength = "Good"
+        elif latency_ms < 600:
+            bars = "▰▰▱▱"
+            strength = "Fair"
         else:
-            self.status_online_label.setText("Online: no")
-            self.status_online_label.setToolTip(
-                "Internet connectivity check failed or timed out."
-            )
+            bars = "▰▱▱▱"
+            strength = "Weak"
+        self.status_online_label.setText(f"Network: {bars}")
+        self.status_online_label.setToolTip(
+            f"{strength} connection • response time {latency_ms} ms"
+        )
 
     def refresh_workspace_views(self, *_):
         projects = self.discover_projects()
