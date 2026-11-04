@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-from PyQt5.QtCore import Qt, QSettings, QThread, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QSettings, QThread, QTime, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
     QApplication,
@@ -1428,6 +1428,24 @@ class DevSuiteWindow(QMainWindow):
 
         central = QWidget()
         self.setCentralWidget(central)
+        self.statusBar().showMessage("Ready")
+        self.statusBar().setStyleSheet(
+            "QStatusBar { background-color: #11141C; color: #8B949E; "
+            "border-top: 1px solid #2A3040; }"
+            "QStatusBar::item { border: none; }"
+        )
+        self.status_page_label = QLabel("Page: Dashboard")
+        self.status_project_label = QLabel("Projects: 0")
+        self.status_tools_label = QLabel("Tools: checking...")
+        self.status_refresh_label = QLabel("Last refresh: never")
+        for label in (
+            self.status_page_label,
+            self.status_project_label,
+            self.status_tools_label,
+            self.status_refresh_label,
+        ):
+            label.setStyleSheet("padding: 0 8px; color: #8B949E;")
+            self.statusBar().addPermanentWidget(label)
 
         self.root_layout = QHBoxLayout(central)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
@@ -2129,21 +2147,39 @@ class DevSuiteWindow(QMainWindow):
             )
             empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
             self.environments_list.addItem(empty)
+        tool_count = sum(
+            shutil.which(tool) is not None
+            for tool in ("uv", "git", "code")
+        )
+        if os.name == "nt" and (
+            shutil.which("pwsh") or shutil.which("powershell")
+        ):
+            tool_count += 1
+        self.status_project_label.setText(f"Projects: {len(projects)}")
+        self.status_tools_label.setText(f"Tools: {tool_count}/4")
+        self.status_refresh_label.setText(
+            f"Last refresh: {QTime.currentTime().toString('HH:mm:ss')}"
+        )
+        self.statusBar().showMessage("Workspace refreshed", 3000)
 
     def show_dashboard(self):
         self.pages.setCurrentIndex(0)
+        self.status_page_label.setText("Page: Dashboard")
         self.refresh_workspace_views()
 
     def show_projects(self):
         self.pages.setCurrentIndex(1)
+        self.status_page_label.setText("Page: My Projects")
         self.refresh_workspace_views()
 
     def show_environments(self):
         self.pages.setCurrentIndex(2)
+        self.status_page_label.setText("Page: Environments")
         self.refresh_workspace_views()
 
     def show_help(self, topic="Welcome"):
         self.pages.setCurrentIndex(3)
+        self.status_page_label.setText("Page: Help")
         for index in range(self.help_topics_list.count()):
             item = self.help_topics_list.item(index)
             if item.text() == topic:
