@@ -2,7 +2,7 @@
 
 # Trixie DevSuite
 
-### A focused Python workspace for creating, discovering, and managing projects.
+### A focused Python workspace for creating, discovering, and managing projects
 
 <p>
   <img src="https://img.shields.io/badge/Python-3.14%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.14 or newer">
