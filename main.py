@@ -173,6 +173,22 @@ class SettingsDialog(QDialog):
 
         settings_layout.addWidget(self.density_combo)
 
+        settings_layout.addWidget(QLabel("Sidebar width"))
+        self.sidebar_width_combo = QComboBox()
+        self.sidebar_width_combo.addItems(["Narrow", "Standard", "Wide"])
+        if parent:
+            self.sidebar_width_combo.setCurrentText(parent.sidebar_width)
+        settings_layout.addWidget(self.sidebar_width_combo)
+
+        settings_layout.addWidget(QLabel("Startup page"))
+        self.startup_page_combo = QComboBox()
+        self.startup_page_combo.addItems(
+            ["Dashboard", "My Projects", "Environments", "Help"]
+        )
+        if parent:
+            self.startup_page_combo.setCurrentText(parent.startup_page)
+        settings_layout.addWidget(self.startup_page_combo)
+
         project_heading = QLabel("Project defaults")
         project_heading.setStyleSheet(
             "font-size: 20px; font-weight: bold; color: #00E5FF;"
@@ -297,6 +313,8 @@ class SettingsDialog(QDialog):
     def get_settings(self):
         return (
             self.density_combo.currentText(),
+            self.sidebar_width_combo.currentText(),
+            self.startup_page_combo.currentText(),
             self.project_location_input.text().strip(),
             self.python_version_combo.currentText(),
             self.auto_refresh_checkbox.isChecked(),
@@ -317,13 +335,24 @@ class SettingsDialog(QDialog):
         if not path:
             return
 
-        density, location, python_version, auto_refresh, interval, roots = (
+        (
+            density,
+            sidebar_width,
+            startup_page,
+            location,
+            python_version,
+            auto_refresh,
+            interval,
+            roots,
+        ) = (
             self.get_settings()
         )
         data = {
             "format": "trixie-devsuite-settings",
             "version": 1,
             "interface_density": density,
+            "sidebar_width": sidebar_width,
+            "startup_page": startup_page,
             "default_project_location": location,
             "default_python_version": python_version,
             "auto_refresh_projects": auto_refresh,
@@ -373,6 +402,8 @@ class SettingsDialog(QDialog):
             return
 
         density = data.get("interface_density")
+        sidebar_width = data.get("sidebar_width", "Standard")
+        startup_page = data.get("startup_page", "Dashboard")
         location = data.get("default_project_location")
         python_version = data.get("default_python_version")
         auto_refresh = data.get("auto_refresh_projects")
@@ -380,6 +411,8 @@ class SettingsDialog(QDialog):
         roots = data.get("project_search_roots")
         valid = (
             density in {"Comfortable", "Compact"}
+            and sidebar_width in {"Narrow", "Standard", "Wide"}
+            and startup_page in {"Dashboard", "My Projects", "Environments", "Help"}
             and isinstance(location, str) and bool(location.strip())
             and python_version in {"3.12", "3.13", "3.14"}
             and isinstance(auto_refresh, bool)
@@ -395,6 +428,8 @@ class SettingsDialog(QDialog):
             return
 
         self.density_combo.setCurrentText(density)
+        self.sidebar_width_combo.setCurrentText(sidebar_width)
+        self.startup_page_combo.setCurrentText(startup_page)
         self.project_location_input.setText(location.strip())
         self.python_version_combo.setCurrentText(python_version)
         self.auto_refresh_checkbox.setChecked(auto_refresh)
@@ -414,6 +449,8 @@ class SettingsDialog(QDialog):
 
     def reset_defaults(self):
         self.density_combo.setCurrentText("Comfortable")
+        self.sidebar_width_combo.setCurrentText("Standard")
+        self.startup_page_combo.setCurrentText("Dashboard")
         self.project_location_input.setText(str(Path.home() / "Projects"))
         self.python_version_combo.setCurrentText("3.13")
         self.auto_refresh_checkbox.setChecked(True)
@@ -1173,6 +1210,12 @@ class DevSuiteWindow(QMainWindow):
         self.interface_density = self.settings.value(
             "interface_density", "Comfortable", str
         )
+        self.sidebar_width = self.settings.value(
+            "sidebar_width", "Standard", str
+        )
+        self.startup_page = self.settings.value(
+            "startup_page", "Dashboard", str
+        )
         self.project_search_roots = self.load_search_roots()
         self.recommended_packages = []
         self.favorite_projects = self.load_project_paths("favorite_projects")
@@ -1530,6 +1573,7 @@ class DevSuiteWindow(QMainWindow):
 
         self.refresh_workspace_views()
         self.update_responsive_layout()
+        self.apply_startup_page()
 
     # ---- Settings helpers ----
 
@@ -2705,9 +2749,19 @@ class DevSuiteWindow(QMainWindow):
         )
         self.content_layout.setSpacing(spacing)
 
+        sidebar_widths = {"Narrow": 200, "Standard": 230, "Wide": 280}
         self.sidebar.setFixedWidth(
-            max(200, min(250, int(width * 0.21)))
+            sidebar_widths.get(self.sidebar_width, 230)
         )
+
+    def apply_startup_page(self):
+        page_actions = {
+            "Dashboard": self.show_dashboard,
+            "My Projects": self.show_projects,
+            "Environments": self.show_environments,
+            "Help": self.show_help,
+        }
+        page_actions.get(self.startup_page, self.show_dashboard)()
 
     def open_terminal(self):
         working_directory = Path(__file__).resolve().parent
@@ -2746,6 +2800,8 @@ class DevSuiteWindow(QMainWindow):
         if dialog.exec_() == QDialog.Accepted:
             (
                 self.interface_density,
+                self.sidebar_width,
+                self.startup_page,
                 self.default_project_location,
                 self.default_python_version,
                 self.auto_refresh_projects,
@@ -2755,6 +2811,8 @@ class DevSuiteWindow(QMainWindow):
                 dialog.get_settings()
             )
             self.settings.setValue("interface_density", self.interface_density)
+            self.settings.setValue("sidebar_width", self.sidebar_width)
+            self.settings.setValue("startup_page", self.startup_page)
             self.settings.setValue(
                 "default_project_location", self.default_project_location
             )

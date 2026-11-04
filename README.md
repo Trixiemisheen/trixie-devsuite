@@ -119,6 +119,8 @@ for its built-in manual and project management features.
 The Settings dialog is compact and scrollable. It supports:
 
 - Comfortable or Compact interface density.
+- Narrow, Standard, or Wide sidebar width.
+- Choose Dashboard, My Projects, Environments, or Help as the startup page.
 - Default project location and Python version.
 - Automatic workspace refresh every 30 seconds.
 - Project search folders.
