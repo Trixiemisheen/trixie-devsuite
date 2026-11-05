@@ -114,6 +114,16 @@ uv sync
 uv run python main.py
 ```
 
+If a virtual environment is already activated and `uv` reports that
+`VIRTUAL_ENV` does not match the project environment, use:
+
+```powershell
+uv run --active python main.py
+```
+
+Alternatively, run `deactivate` first and let `uv` select the project's
+environment automatically.
+
 <details>
 <summary>Run without uv</summary>
 

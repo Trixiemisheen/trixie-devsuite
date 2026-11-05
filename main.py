@@ -3116,6 +3116,30 @@ class DevSuiteWindow(QMainWindow):
         super().resizeEvent(event)
         self.update_responsive_layout()
 
+    def closeEvent(self, event):
+        self.refresh_timer.stop()
+        self.status_clock_timer.stop()
+        self.status_usage_timer.stop()
+        self.connectivity_timer.stop()
+
+        setup_workers = self.findChildren(ProjectSetupWorker)
+        for worker in setup_workers:
+            if worker.isRunning():
+                worker.cancel()
+
+        workers = [
+            worker for worker in (
+                getattr(self, "connectivity_worker", None),
+                getattr(self, "help_search_worker", None),
+                *setup_workers,
+            )
+            if worker is not None and worker.isRunning()
+        ]
+        for worker in workers:
+            worker.wait(13000)
+
+        super().closeEvent(event)
+
     def update_responsive_layout(self):
         width = self.width()
 
