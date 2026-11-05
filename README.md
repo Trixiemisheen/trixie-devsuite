@@ -35,7 +35,7 @@
 | **Manage** | Inspect packages, update dependencies, and upgrade `uv.lock` |
 | **Collaborate** | Review Git status and history, switch branches, and commit changes |
 | **Monitor** | Track project health, CPU, RAM, time, tools, Git branch, and network strength |
-| **Dashboard** | View workspace metrics, health summaries, recent projects, and quick tools |
+| **Dashboard** | View workspace metrics, health summaries, recent projects, and developer tools |
 
 ## What it does
 

@@ -1713,9 +1713,6 @@ class DevSuiteWindow(QMainWindow):
         new_project_button.setObjectName("primary")
         new_project_button.clicked.connect(self.create_new_project)
         hero_actions.addWidget(new_project_button)
-        browse_button = QPushButton("Browse Projects")
-        browse_button.clicked.connect(self.show_projects)
-        hero_actions.addWidget(browse_button)
         hero_actions.addStretch()
         hero_layout.addLayout(hero_actions)
         self.content_layout.addWidget(hero)
@@ -1732,11 +1729,13 @@ class DevSuiteWindow(QMainWindow):
         self.python_version_card = self.create_card(
             "PYTHON VERSION", sys.version.split()[0]
         )
+        self.healthy_projects_card = self.create_card("HEALTHY PROJECTS", "0")
         stats_layout.addWidget(self.total_projects_card)
         stats_layout.addWidget(self.environments_card)
         stats_layout.addWidget(self.python_version_card)
         self.favorites_card = self.create_card("PINNED PROJECTS", "0")
         stats_layout.addWidget(self.favorites_card)
+        stats_layout.addWidget(self.healthy_projects_card)
 
         self.content_layout.addLayout(stats_layout)
 
@@ -1746,18 +1745,18 @@ class DevSuiteWindow(QMainWindow):
 
         actions_layout = QHBoxLayout()
         actions_layout.setSpacing(10)
-        terminal_button = QPushButton(">_  Terminal")
+        folder_button = QPushButton("▣  Open Project Root")
+        folder_button.clicked.connect(self.open_project_root)
+        actions_layout.addWidget(folder_button)
+        tools_button = QPushButton("✓  Check Toolchain")
+        tools_button.clicked.connect(self.show_toolchain_status)
+        actions_layout.addWidget(tools_button)
+        terminal_button = QPushButton(">_  Workspace Terminal")
         terminal_button.clicked.connect(self.open_terminal)
         actions_layout.addWidget(terminal_button)
-        refresh_button = QPushButton("↻  Refresh Workspace")
+        refresh_button = QPushButton("↻  Scan Workspace")
         refresh_button.clicked.connect(self.refresh_workspace_views)
         actions_layout.addWidget(refresh_button)
-        environments_button = QPushButton("⚙  Environments")
-        environments_button.clicked.connect(self.show_environments)
-        actions_layout.addWidget(environments_button)
-        help_button = QPushButton("?  Help")
-        help_button.clicked.connect(self.show_help)
-        actions_layout.addWidget(help_button)
         self.content_layout.addLayout(actions_layout)
 
         snapshot_card = QFrame()
@@ -2414,9 +2413,21 @@ class DevSuiteWindow(QMainWindow):
         self.total_projects_card.value_label.setText(str(len(projects)))
         self.environments_card.value_label.setText(str(environment_count))
         self.favorites_card.value_label.setText(str(len(self.favorite_projects)))
+        healthy_projects = sum(
+            (project / "pyproject.toml").is_file()
+            and (project / "main.py").is_file()
+            and self.environment_python(project) is not None
+            for project in projects
+        )
+        self.healthy_projects_card.value_label.setText(str(healthy_projects))
         if projects:
             environment_summary = (
                 f"{environment_count} of {len(projects)} projects have a virtual environment"
+            )
+            health_summary = (
+                f"{healthy_projects} ready for development"
+                if healthy_projects
+                else "No projects are fully ready yet"
             )
             pinned_summary = (
                 f"{len(self.favorite_projects)} pinned"
@@ -2424,7 +2435,7 @@ class DevSuiteWindow(QMainWindow):
                 else "No pinned projects yet"
             )
             self.dashboard_snapshot.setText(
-                f"{environment_summary} • {pinned_summary}. "
+                f"{health_summary} • {environment_summary} • {pinned_summary}. "
                 "Use My Projects to inspect health, run checks, or open a project."
             )
         else:
@@ -3145,6 +3156,47 @@ class DevSuiteWindow(QMainWindow):
             args = [terminal]
 
         self.launch_terminal(args, working_directory)
+
+    def open_project_root(self):
+        project_root = Path(self.default_project_location).expanduser()
+        if not project_root.is_dir():
+            QMessageBox.information(
+                self,
+                "Project root not found",
+                f"The configured project location does not exist yet:\n{project_root}\n\n"
+                "Create a project first or update the default location in Settings.",
+            )
+            return
+        self.open_path_in_file_manager(project_root)
+
+    def show_toolchain_status(self):
+        tools = {
+            "Python": sys.executable,
+            "uv": shutil.which("uv"),
+            "Git": shutil.which("git"),
+            "VS Code": shutil.which("code"),
+            "PowerShell": shutil.which("pwsh") or shutil.which("powershell"),
+        }
+        lines = [
+            f"{name}: {'Available — ' + path if path else 'Not found on PATH'}"
+            for name, path in tools.items()
+        ]
+        available = sum(path is not None for path in tools.values())
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Developer Toolchain")
+        dialog.resize(620, 320)
+        layout = QVBoxLayout(dialog)
+        heading = QLabel(f"{available}/{len(tools)} developer tools available")
+        heading.setObjectName("heading")
+        layout.addWidget(heading)
+        output = QPlainTextEdit()
+        output.setReadOnly(True)
+        output.setPlainText("\n".join(lines))
+        layout.addWidget(output, 1)
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+        dialog.exec_()
 
     def open_settings(self):
         dialog = SettingsDialog(self)
