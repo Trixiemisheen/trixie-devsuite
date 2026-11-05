@@ -1322,8 +1322,8 @@ class DevSuiteWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Trixie DevSuite™")
-        self.resize(1100, 700)
-        self.setMinimumSize(900, 600)
+        self.setMinimumSize(960, 640)
+        self.set_initial_window_geometry()
 
         self.settings = QSettings(APP_ORG, APP_NAME)
         self.interface_density = self.settings.value(
@@ -1794,7 +1794,12 @@ class DevSuiteWindow(QMainWindow):
         self.content_layout.addWidget(footer)
 
         self.pages = QStackedWidget()
-        self.pages.addWidget(content)
+        self.dashboard_scroll = QScrollArea()
+        self.dashboard_scroll.setWidgetResizable(True)
+        self.dashboard_scroll.setFrameShape(QFrame.NoFrame)
+        self.dashboard_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.dashboard_scroll.setWidget(content)
+        self.pages.addWidget(self.dashboard_scroll)
         self.projects_page = self.build_projects_page()
         self.environments_page = self.build_environments_page()
         self.help_page = self.build_help_page()
@@ -1814,6 +1819,23 @@ class DevSuiteWindow(QMainWindow):
         self.check_connectivity()
 
     # ---- Settings helpers ----
+
+    def set_initial_window_geometry(self):
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.resize(1200, 760)
+            return
+
+        available = screen.availableGeometry()
+        width = min(1400, max(960, int(available.width() * 0.90)))
+        height = min(900, max(640, int(available.height() * 0.88)))
+        self.resize(
+            min(width, available.width()),
+            min(height, available.height()),
+        )
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
 
     def load_search_roots(self):
         raw = self.settings.value(SEARCH_ROOTS_KEY)
