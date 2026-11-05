@@ -1408,6 +1408,43 @@ class DevSuiteWindow(QMainWindow):
                 border-radius: 12px;
             }
 
+            QFrame#dashboard_hero {
+                background-color: #182B3D;
+                border: 1px solid #24506A;
+                border-radius: 14px;
+            }
+
+            QLabel#dashboard_kicker {
+                color: #7DEBFF;
+                font-size: 11px;
+                font-weight: bold;
+                letter-spacing: 1px;
+            }
+
+            QLabel#dashboard_title {
+                color: #F4FBFF;
+                font-size: 25px;
+                font-weight: bold;
+            }
+
+            QLabel#dashboard_body {
+                color: #A9C6D4;
+                font-size: 13px;
+            }
+
+            QLabel#dashboard_section {
+                color: #8B949E;
+                font-size: 12px;
+                font-weight: bold;
+                letter-spacing: 1px;
+            }
+
+            QLabel#dashboard_snapshot {
+                color: #DCEAF1;
+                font-size: 13px;
+                padding: 8px;
+            }
+
             QLabel#card_title {
                 color: #8B949E;
                 font-size: 13px;
@@ -1649,28 +1686,43 @@ class DevSuiteWindow(QMainWindow):
         self.content_layout.setContentsMargins(32, 28, 32, 28)
         self.content_layout.setSpacing(20)
 
-        heading = QLabel("Developer Dashboard")
-        heading.setObjectName("heading")
-        self.content_layout.addWidget(heading)
+        hero = QFrame()
+        hero.setObjectName("dashboard_hero")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(22, 18, 22, 18)
+        hero_layout.setSpacing(6)
+
+        kicker = QLabel("TRIXIE DEVSUITE  /  WORKSPACE OVERVIEW")
+        kicker.setObjectName("dashboard_kicker")
+        hero_layout.addWidget(kicker)
+
+        heading = QLabel("Build with less friction.")
+        heading.setObjectName("dashboard_title")
+        hero_layout.addWidget(heading)
 
         subtitle = QLabel(
-            "Your Python projects, environments, and tools in one place."
+            "Create, inspect, and launch your Python projects from one focused workspace."
         )
-        subtitle.setObjectName("subtitle")
-        self.content_layout.addWidget(subtitle)
+        subtitle.setObjectName("dashboard_body")
+        subtitle.setWordWrap(True)
+        hero_layout.addWidget(subtitle)
 
-        welcome = QLabel("Welcome back, Dev! 🐍")
-        welcome.setStyleSheet(
-            "font-size: 19px; font-weight: bold; padding-top: 12px;"
-        )
-        self.content_layout.addWidget(welcome)
+        hero_actions = QHBoxLayout()
+        hero_actions.setSpacing(10)
+        new_project_button = QPushButton("+  New Project")
+        new_project_button.setObjectName("primary")
+        new_project_button.clicked.connect(self.create_new_project)
+        hero_actions.addWidget(new_project_button)
+        browse_button = QPushButton("Browse Projects")
+        browse_button.clicked.connect(self.show_projects)
+        hero_actions.addWidget(browse_button)
+        hero_actions.addStretch()
+        hero_layout.addLayout(hero_actions)
+        self.content_layout.addWidget(hero)
 
-        description = QLabel(
-            "Build something brilliant. "
-            "Let DevSuite™ handle the setup."
-        )
-        description.setObjectName("subtitle")
-        self.content_layout.addWidget(description)
+        stats_heading = QLabel("WORKSPACE SNAPSHOT")
+        stats_heading.setObjectName("dashboard_section")
+        self.content_layout.addWidget(stats_heading)
 
         stats_layout = QHBoxLayout()
         stats_layout.setSpacing(16)
@@ -1688,20 +1740,40 @@ class DevSuiteWindow(QMainWindow):
 
         self.content_layout.addLayout(stats_layout)
 
-        actions_heading = QLabel("QUICK ACTIONS")
-        actions_heading.setObjectName("section")
+        actions_heading = QLabel("QUICK TOOLS")
+        actions_heading.setObjectName("dashboard_section")
         self.content_layout.addWidget(actions_heading)
 
-        new_project_button = QPushButton("+   Create a New Python Project")
-        new_project_button.setObjectName("primary")
-        new_project_button.setMinimumHeight(48)
-        new_project_button.clicked.connect(self.create_new_project)
-        self.content_layout.addWidget(new_project_button)
-
-        terminal_button = QPushButton(">_   Open Terminal")
-        terminal_button.setMinimumHeight(45)
+        actions_layout = QHBoxLayout()
+        actions_layout.setSpacing(10)
+        terminal_button = QPushButton(">_  Terminal")
         terminal_button.clicked.connect(self.open_terminal)
-        self.content_layout.addWidget(terminal_button)
+        actions_layout.addWidget(terminal_button)
+        refresh_button = QPushButton("↻  Refresh Workspace")
+        refresh_button.clicked.connect(self.refresh_workspace_views)
+        actions_layout.addWidget(refresh_button)
+        environments_button = QPushButton("⚙  Environments")
+        environments_button.clicked.connect(self.show_environments)
+        actions_layout.addWidget(environments_button)
+        help_button = QPushButton("?  Help")
+        help_button.clicked.connect(self.show_help)
+        actions_layout.addWidget(help_button)
+        self.content_layout.addLayout(actions_layout)
+
+        snapshot_card = QFrame()
+        snapshot_card.setObjectName("card")
+        snapshot_layout = QVBoxLayout(snapshot_card)
+        snapshot_layout.setContentsMargins(14, 10, 14, 10)
+        snapshot_title = QLabel("WORKSPACE NOTE")
+        snapshot_title.setObjectName("card_title")
+        snapshot_layout.addWidget(snapshot_title)
+        self.dashboard_snapshot = QLabel(
+            "Refresh the workspace to see the latest project health summary."
+        )
+        self.dashboard_snapshot.setObjectName("dashboard_snapshot")
+        self.dashboard_snapshot.setWordWrap(True)
+        snapshot_layout.addWidget(self.dashboard_snapshot)
+        self.content_layout.addWidget(snapshot_card)
 
         project_lists = QHBoxLayout()
         self.favorites_list = self.build_project_shortlist(
@@ -2342,6 +2414,24 @@ class DevSuiteWindow(QMainWindow):
         self.total_projects_card.value_label.setText(str(len(projects)))
         self.environments_card.value_label.setText(str(environment_count))
         self.favorites_card.value_label.setText(str(len(self.favorite_projects)))
+        if projects:
+            environment_summary = (
+                f"{environment_count} of {len(projects)} projects have a virtual environment"
+            )
+            pinned_summary = (
+                f"{len(self.favorite_projects)} pinned"
+                if self.favorite_projects
+                else "No pinned projects yet"
+            )
+            self.dashboard_snapshot.setText(
+                f"{environment_summary} • {pinned_summary}. "
+                "Use My Projects to inspect health, run checks, or open a project."
+            )
+        else:
+            self.dashboard_snapshot.setText(
+                "No projects discovered yet. Create a project or add a search "
+                "folder in Settings to get started."
+            )
 
         if not projects:
             empty = QListWidgetItem(
