@@ -853,7 +853,7 @@ HELP_TOPICS = {
         "send your project idea to an online service.\n\n"
         "Created by Trixie Misheen\n"
         "Use the buttons below to visit the official social and project links.\n\n"
-        "Version: 0.7.1"
+        "Version: 0.8.9"
     ),
 }
 
@@ -935,7 +935,7 @@ class WebSearchWorker(QThread):
             )
             request = Request(
                 url,
-                headers={"User-Agent": "TrixieDevSuite/0.7.1"},
+                headers={"User-Agent": "TrixieDevSuite/0.8.9"},
             )
             with urlopen(request, timeout=12) as response:
                 html = response.read().decode("utf-8", errors="replace")
@@ -955,7 +955,7 @@ class ConnectivityWorker(QThread):
             request = Request(
                 "https://connectivitycheck.gstatic.com/generate_204",
                 method="HEAD",
-                headers={"User-Agent": "TrixieDevSuite/0.7.1"},
+                headers={"User-Agent": "TrixieDevSuite/0.8.9"},
             )
             with urlopen(request, timeout=5):
                 pass
@@ -1671,7 +1671,7 @@ class DevSuiteWindow(QMainWindow):
         settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite • v0.7.1")
+        version = QLabel("Trixie DevSuite • v0.8.9")
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
         )
