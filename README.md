@@ -67,13 +67,16 @@
 
 ### Settings and status
 
-- Configure interface density, sidebar width, and startup page.
+- Configure interface density, neon developer themes (including Neon Sunset),
+  sidebar width, and startup page.
 - Set the default project location and Python version.
 - Configure automatic refresh and project search folders.
 - Export and import portable JSON settings.
 - See current day and time, CPU and RAM usage, available tools, selected branch,
   project count, refresh time, and a response-time-based network strength meter
   in the status bar.
+- Use the dashboard Focus Launchpad to jump back into the most relevant pinned
+  or recently used project with one click.
 
 ### Help
 

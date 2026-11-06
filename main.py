@@ -57,6 +57,36 @@ SEARCH_ROOTS_KEY = "project_search_roots"
 
 THEME_COLOR_MAPS = {
     "Dev Cyan": {},
+    "Neon Sunset": {
+        "#151821": "#160F1B",
+        "#11141C": "#100B14",
+        "#202633": "#25152B",
+        "#293548": "#39203E",
+        "#303849": "#55304F",
+        "#2A3040": "#43253F",
+        "#E6EDF3": "#FFF1F8",
+        "#8B949E": "#C79BB5",
+        "#00E5FF": "#FF4FD8",
+        "#00B8D4": "#FF8A3D",
+        "#10141C": "#160F1B",
+        "#182B3D": "#351B3F",
+        "#24506A": "#74345F",
+        "#7DEBFF": "#FFB3E8",
+        "#F4FBFF": "#FFF8FC",
+        "#A9C6D4": "#D9AFCB",
+        "#3B5265": "#704361",
+        "#111A24": "#1D1022",
+        "#2B3C4B": "#4D2850",
+        "#AFC1CC": "#D5B3C9",
+        "#1D3444": "#4B2550",
+        "#0B687E": "#B72E88",
+        "#FFFFFF": "#FFFFFF",
+        "#1B222E": "#24142A",
+        "#DCEAF1": "#F8DDEB",
+        "#146A80": "#8C286C",
+        "#164653": "#54244F",
+        "#697586": "#9B6C8A",
+    },
     "Monokai": {
         "#151821": "#272822",
         "#11141C": "#1E1F1C",
@@ -1445,6 +1475,30 @@ class DevSuiteWindow(QMainWindow):
                 padding: 8px;
             }
 
+            QFrame#focus_launchpad {
+                background-color: #21152D;
+                border: 1px solid #6A3F72;
+                border-radius: 12px;
+            }
+
+            QLabel#focus_kicker {
+                color: #FF9DE6;
+                font-size: 11px;
+                font-weight: bold;
+                letter-spacing: 1px;
+            }
+
+            QLabel#focus_title {
+                color: #FFF4FC;
+                font-size: 18px;
+                font-weight: bold;
+            }
+
+            QLabel#focus_body {
+                color: #D7B5D0;
+                font-size: 13px;
+            }
+
             QLabel#card_title {
                 color: #8B949E;
                 font-size: 13px;
@@ -1785,6 +1839,37 @@ class DevSuiteWindow(QMainWindow):
         project_lists.addWidget(self.recent_list)
         self.content_layout.addLayout(project_lists)
 
+        launchpad = QFrame()
+        launchpad.setObjectName("focus_launchpad")
+        launchpad_layout = QVBoxLayout(launchpad)
+        launchpad_layout.setContentsMargins(16, 13, 16, 13)
+        launchpad_layout.setSpacing(6)
+        launchpad_kicker = QLabel("FOCUS LAUNCHPAD")
+        launchpad_kicker.setObjectName("focus_kicker")
+        launchpad_layout.addWidget(launchpad_kicker)
+        self.focus_title = QLabel("Ready when you are.")
+        self.focus_title.setObjectName("focus_title")
+        launchpad_layout.addWidget(self.focus_title)
+        self.focus_body = QLabel(
+            "Pin or open a project to make it your one-click launch target."
+        )
+        self.focus_body.setObjectName("focus_body")
+        self.focus_body.setWordWrap(True)
+        launchpad_layout.addWidget(self.focus_body)
+        focus_actions = QHBoxLayout()
+        focus_open_button = QPushButton("Open Folder")
+        focus_open_button.clicked.connect(self.open_focus_project_folder)
+        focus_actions.addWidget(focus_open_button)
+        focus_editor_button = QPushButton("Open in VS Code")
+        focus_editor_button.clicked.connect(self.open_focus_project_in_editor)
+        focus_actions.addWidget(focus_editor_button)
+        focus_terminal_button = QPushButton(">_  Terminal")
+        focus_terminal_button.clicked.connect(self.open_focus_project_terminal)
+        focus_actions.addWidget(focus_terminal_button)
+        focus_actions.addStretch()
+        launchpad_layout.addLayout(focus_actions)
+        self.content_layout.addWidget(launchpad)
+
         self.content_layout.addStretch()
 
         footer = QLabel("TRIXIE MISHEEN™  •  BUILT WITH PYTHON & PyQt5")
@@ -1906,6 +1991,52 @@ class DevSuiteWindow(QMainWindow):
                 empty = QListWidgetItem("No projects yet")
                 empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
                 widget.project_list.addItem(empty)
+        self.update_focus_launchpad()
+
+    def focus_project(self):
+        candidates = self.favorite_projects + self.recent_projects
+        for path in candidates:
+            project = Path(path)
+            if project.is_dir():
+                return project
+        return None
+
+    def update_focus_launchpad(self):
+        project = self.focus_project()
+        if project is None:
+            self.focus_title.setText("Ready when you are.")
+            self.focus_body.setText(
+                "Pin or open a project to make it your one-click launch target."
+            )
+            return
+        self.focus_title.setText(f"Continue with {project.name}")
+        self.focus_body.setText(
+            f"{project}  •  Your fastest route back into the work."
+        )
+
+    def open_focus_project_folder(self):
+        project = self.focus_project()
+        if project is None:
+            self.show_projects()
+            return
+        self.record_recent_project(project)
+        self.open_path_in_file_manager(project)
+
+    def open_focus_project_in_editor(self):
+        project = self.focus_project()
+        if project is None:
+            self.show_projects()
+            return
+        self.record_recent_project(project)
+        self.open_project_in_editor(project)
+
+    def open_focus_project_terminal(self):
+        project = self.focus_project()
+        if project is None:
+            self.show_projects()
+            return
+        self.record_recent_project(project)
+        self.open_project_terminal(project)
 
     def open_shortlist_project(self, item):
         project = Path(item.data(256))
@@ -2611,6 +2742,9 @@ class DevSuiteWindow(QMainWindow):
         project = self.selected_project_path(self.projects_list)
         if not project:
             return
+        self.open_project_in_editor(project)
+
+    def open_project_in_editor(self, project):
         editor = shutil.which("code")
         if editor is None:
             QMessageBox.warning(
