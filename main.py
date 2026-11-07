@@ -998,6 +998,67 @@ class ConnectivityWorker(QThread):
             })
 
 
+class DiagnosticsWorker(QThread):
+    completed = pyqtSignal(object)
+
+    def __init__(self, project=None):
+        super().__init__()
+        self.project = Path(project) if project else None
+
+    def run(self):
+        results = []
+        for label, command in (("Python", [sys.executable, "--version"]),
+                               ("Git", ["git", "--version"]),
+                               ("uv", ["uv", "--version"])):
+            executable = shutil.which(command[0])
+            if not executable:
+                results.append((label, "CRITICAL", "Not found on PATH"))
+                continue
+            try:
+                check = subprocess.run([executable, *command[1:]], capture_output=True,
+                                       text=True, timeout=5, check=False)
+                detail = (check.stdout or check.stderr).strip()
+                results.append((label, "HEALTHY" if check.returncode == 0 else "WARNING",
+                                detail or f"Exited with code {check.returncode}"))
+            except (OSError, subprocess.TimeoutExpired) as error:
+                results.append((label, "WARNING", str(error)))
+        if self.project:
+            has_main = (self.project / "main.py").is_file()
+            results.append(("Workspace · main.py", "HEALTHY" if has_main else "WARNING",
+                            str(self.project) if has_main else "No boot file found in workspace"))
+            has_environment = (self.project / ".venv").is_dir() or (self.project / "venv").is_dir()
+            results.append(("Project environment", "HEALTHY" if has_environment else "WARNING",
+                            "Virtual environment found" if has_environment else "No .venv or venv folder"))
+        self.completed.emit(results)
+
+
+class SyncWorker(QThread):
+    output = pyqtSignal(str)
+    completed = pyqtSignal(int)
+
+    def __init__(self, project):
+        super().__init__()
+        self.project = Path(project)
+
+    def run(self):
+        uv = shutil.which("uv")
+        if not uv:
+            self.output.emit("ERROR: uv is not available on PATH. Install uv, then rerun diagnostics.")
+            self.completed.emit(127)
+            return
+        try:
+            process = subprocess.Popen([uv, "sync"], cwd=str(self.project),
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                       text=True, encoding="utf-8", errors="replace",
+                                       bufsize=1)
+            for line in process.stdout:
+                self.output.emit(line.rstrip())
+            self.completed.emit(process.wait())
+        except OSError as error:
+            self.output.emit(f"ERROR: {error}")
+            self.completed.emit(1)
+
+
 class PackageAdvisorDialog(QDialog):
     """Step 2 of the New Project flow: rule-based offline package picks."""
 
@@ -2263,7 +2324,41 @@ class DevSuiteWindow(QMainWindow):
         self.help_article.setReadOnly(True)
         self.help_article.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         content_layout.addWidget(self.help_topics_list)
-        content_layout.addWidget(self.help_article, 1)
+        self.help_content_stack = QStackedWidget()
+        self.help_content_stack.addWidget(self.help_article)
+        diagnostics_page = QWidget()
+        diagnostics_layout = QVBoxLayout(diagnostics_page)
+        diagnostics_layout.setContentsMargins(12, 8, 4, 4)
+        diagnostics_layout.setSpacing(10)
+        diagnostics_header = QHBoxLayout()
+        self.diagnostics_status = QLabel("Diagnostics have not been run yet")
+        self.diagnostics_status.setStyleSheet("font-size: 16px; font-weight: bold;")
+        diagnostics_header.addWidget(self.diagnostics_status, 1)
+        self.diagnostics_run_button = QPushButton("Run Full Diagnostics")
+        self.diagnostics_run_button.clicked.connect(self.run_diagnostics)
+        diagnostics_header.addWidget(self.diagnostics_run_button)
+        diagnostics_layout.addLayout(diagnostics_header)
+        diagnostics_layout.addWidget(QLabel("DEPENDENCY SYSTEM CHECKS"))
+        self.diagnostics_results = QPlainTextEdit()
+        self.diagnostics_results.setObjectName("help_article")
+        self.diagnostics_results.setReadOnly(True)
+        self.diagnostics_results.setMaximumHeight(150)
+        diagnostics_layout.addWidget(self.diagnostics_results)
+        action_row = QHBoxLayout()
+        self.diagnostics_project_label = QLabel("Select a project to run setup sync.")
+        action_row.addWidget(self.diagnostics_project_label, 1)
+        self.diagnostics_sync_button = QPushButton("Setup Sync · uv sync")
+        self.diagnostics_sync_button.clicked.connect(self.run_diagnostics_sync)
+        action_row.addWidget(self.diagnostics_sync_button)
+        diagnostics_layout.addLayout(action_row)
+        diagnostics_layout.addWidget(QLabel("LIVE LOG & TERMINAL OUTPUT"))
+        self.diagnostics_log = QPlainTextEdit()
+        self.diagnostics_log.setObjectName("help_article")
+        self.diagnostics_log.setReadOnly(True)
+        self.diagnostics_log.setPlaceholderText("Diagnostic and setup output will appear here.")
+        diagnostics_layout.addWidget(self.diagnostics_log, 1)
+        self.help_content_stack.addWidget(diagnostics_page)
+        content_layout.addWidget(self.help_content_stack, 1)
         layout.addLayout(content_layout, 1)
 
         self.help_resources_title = QLabel("ONLINE RESOURCES")
@@ -2279,7 +2374,17 @@ class DevSuiteWindow(QMainWindow):
         def display_topic(item):
             if item is not None:
                 topic = item.text()
-                self.help_article.setPlainText(HELP_TOPICS[topic])
+                troubleshooting = topic == "Troubleshooting"
+                self.help_content_stack.setCurrentIndex(1 if troubleshooting else 0)
+                if troubleshooting:
+                    selected = self.projects_list.currentItem()
+                    project = selected.data(256) if selected else None
+                    self.diagnostics_project_label.setText(
+                        f"Selected project: {project}" if project else "Select a project to run setup sync."
+                    )
+                    self.run_diagnostics()
+                else:
+                    self.help_article.setPlainText(HELP_TOPICS[topic])
                 self.update_help_resources(topic)
 
         def filter_topics():
@@ -2334,6 +2439,70 @@ class DevSuiteWindow(QMainWindow):
             )
             self.help_resources_layout.addWidget(button)
         self.help_resources_layout.addStretch()
+
+    def run_diagnostics(self):
+        selected = getattr(self, "projects_list", None)
+        item = selected.currentItem() if selected else None
+        project = item.data(256) if item else None
+        self.diagnostics_run_button.setEnabled(False)
+        self.diagnostics_status.setText("Scanning system…")
+        self.diagnostics_log.appendPlainText(
+            f"[{QDateTime.currentDateTime().toString('HH:mm:ss')}] Starting system diagnostics"
+        )
+        self.diagnostics_worker = DiagnosticsWorker(project)
+        def display(results):
+            rows = []
+            healthy = 0
+            for name, status, detail in results:
+                icon = {"HEALTHY": "🟢", "WARNING": "🟡", "CRITICAL": "🔴"}[status]
+                rows.append(f"{icon}  {name}: {detail}")
+                healthy += status == "HEALTHY"
+            self.diagnostics_results.setPlainText("\n".join(rows))
+            issues = len(results) - healthy
+            self.diagnostics_status.setText(
+                "All checks healthy" if not issues else f"{issues} issue{'s' if issues != 1 else ''} detected"
+            )
+            for name, status, detail in results:
+                self.diagnostics_log.appendPlainText(
+                    f"[{QDateTime.currentDateTime().toString('HH:mm:ss')}] {status}: {name} — {detail}"
+                )
+        self.diagnostics_worker.completed.connect(display)
+        self.diagnostics_worker.finished.connect(
+            lambda: self.diagnostics_run_button.setEnabled(True)
+        )
+        self.diagnostics_worker.start()
+
+    def run_diagnostics_sync(self):
+        project = self.selected_project_path(self.projects_list)
+        if not project:
+            return
+        if not (project / "pyproject.toml").is_file():
+            QMessageBox.warning(
+                self, "Cannot sync this project",
+                "This folder has no pyproject.toml file for uv to sync."
+            )
+            return
+        if not shutil.which("uv"):
+            QMessageBox.warning(
+                self, "uv unavailable",
+                "Install uv from the Troubleshooting online resources, then rerun setup sync."
+            )
+            return
+        self.diagnostics_sync_button.setEnabled(False)
+        self.diagnostics_log.appendPlainText(
+            f"[{QDateTime.currentDateTime().toString('HH:mm:ss')}] Running uv sync in {project}"
+        )
+        self.diagnostics_sync_worker = SyncWorker(project)
+        self.diagnostics_sync_worker.output.connect(self.diagnostics_log.appendPlainText)
+        def sync_finished(code):
+            state = "completed successfully" if code == 0 else f"failed with exit code {code}"
+            self.diagnostics_log.appendPlainText(
+                f"[{QDateTime.currentDateTime().toString('HH:mm:ss')}] uv sync {state}"
+            )
+            self.diagnostics_sync_button.setEnabled(True)
+            self.run_diagnostics()
+        self.diagnostics_sync_worker.completed.connect(sync_finished)
+        self.diagnostics_sync_worker.start()
 
     def search_help_online(self):
         query = self.help_search_input.text().strip()
