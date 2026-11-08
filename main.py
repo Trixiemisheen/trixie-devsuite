@@ -904,7 +904,7 @@ HELP_TOPICS = {
         "send your project idea to an online service.\n\n"
         "Created by Trixie Misheen\n"
         "Use the buttons below to visit the official social and project links.\n\n"
-        "Version: 1.0.1"
+        "Version: 1.0.2"
     ),
 }
 
@@ -986,7 +986,7 @@ class WebSearchWorker(QThread):
             )
             request = Request(
                 url,
-                headers={"User-Agent": "TrixieDevSuite/1.0.1"},
+                headers={"User-Agent": "TrixieDevSuite/1.0.2"},
             )
             with urlopen(request, timeout=12) as response:
                 html = response.read().decode("utf-8", errors="replace")
@@ -1006,7 +1006,7 @@ class ConnectivityWorker(QThread):
             request = Request(
                 "https://connectivitycheck.gstatic.com/generate_204",
                 method="HEAD",
-                headers={"User-Agent": "TrixieDevSuite/1.0.1"},
+                headers={"User-Agent": "TrixieDevSuite/1.0.2"},
             )
             with urlopen(request, timeout=5):
                 pass
@@ -1933,7 +1933,7 @@ class DevSuiteWindow(QMainWindow):
         settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite • V 1.0.1")
+        version = QLabel("Trixie DevSuite • V 1.0.2")
         self.sidebar_version_label = version
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
@@ -3799,7 +3799,7 @@ class DevSuiteWindow(QMainWindow):
 
         self.apply_sidebar_state()
 
-    def apply_sidebar_state(self):
+    def apply_sidebar_state(self, force_width=False):
         """Apply the persisted sidebar width/collapsed state."""
         if not hasattr(self, "workspace_splitter"):
             return
@@ -3814,9 +3814,11 @@ class DevSuiteWindow(QMainWindow):
             self.sidebar.setMinimumWidth(180)
             self.sidebar.setMaximumWidth(360)
 
-        sizes = self.workspace_splitter.sizes()
-        available = max(1, sum(sizes) - target_width)
-        self.workspace_splitter.setSizes([target_width, available])
+        if force_width or not getattr(self, "_sidebar_width_applied", False):
+            sizes = self.workspace_splitter.sizes()
+            available = max(1, sum(sizes) - target_width)
+            self.workspace_splitter.setSizes([target_width, available])
+            self._sidebar_width_applied = True
 
         self.sidebar_toggle_button.setText("»" if self.sidebar_collapsed else "«")
         self.sidebar_toggle_button.setToolTip(
@@ -3834,7 +3836,7 @@ class DevSuiteWindow(QMainWindow):
     def toggle_sidebar(self):
         self.sidebar_collapsed = not self.sidebar_collapsed
         self.settings.setValue("sidebar_collapsed", self.sidebar_collapsed)
-        self.apply_sidebar_state()
+        self.apply_sidebar_state(force_width=True)
         self.record_activity(
             "Collapsed sidebar" if self.sidebar_collapsed else "Expanded sidebar"
         )
@@ -3971,6 +3973,7 @@ class DevSuiteWindow(QMainWindow):
                 )
             )
             self.update_responsive_layout()
+            self.apply_sidebar_state(force_width=True)
             self.refresh_workspace_views()
             self.record_activity("Saved application settings")
 
