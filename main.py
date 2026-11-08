@@ -982,7 +982,12 @@ HELP_TOPICS = {
         "Use the sidebar to create a project, browse discovered projects, "
         "inspect environments, or change settings.\n\n"
         "Keyboard shortcut\n"
-        "Press Ctrl+H at any time to open this manual."
+        "Ctrl+N  New project\n"
+        "Ctrl+1–Ctrl+6  Open Dashboard, Projects, Environments, Help, "
+        "Troubleshooting, or Support\n"
+        "Ctrl+,  Settings  •  Ctrl+B  Collapse/expand sidebar\n"
+        "Ctrl+Shift+M  Notification center\n"
+        "Ctrl+H  Open this manual."
     ),
     "Create a project": (
         "Create a Python project\n\n"
@@ -2239,6 +2244,7 @@ class DevSuiteWindow(QMainWindow):
 
         self.help_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
         self.help_shortcut.activated.connect(self.show_help)
+        self.setup_keyboard_shortcuts()
 
         self.refresh_workspace_views()
         self.update_responsive_layout()
@@ -3256,6 +3262,26 @@ class DevSuiteWindow(QMainWindow):
         )
         self.status_branch_label.setText("Branch: none selected")
         self.statusBar().showMessage("Workspace refreshed", 3000)
+
+    def setup_keyboard_shortcuts(self):
+        """Register the app-wide navigation and action shortcuts."""
+        shortcuts = {
+            "Ctrl+N": self.create_new_project,
+            "Ctrl+1": self.show_dashboard,
+            "Ctrl+2": self.show_projects,
+            "Ctrl+3": self.show_environments,
+            "Ctrl+4": self.show_help,
+            "Ctrl+5": self.show_troubleshooting,
+            "Ctrl+6": self.show_support,
+            "Ctrl+,": self.open_settings,
+            "Ctrl+B": self.toggle_sidebar,
+            "Ctrl+Shift+M": self.notifications.open_center,
+        }
+        self.app_shortcuts = []
+        for sequence, callback in shortcuts.items():
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.activated.connect(callback)
+            self.app_shortcuts.append(shortcut)
 
     def show_dashboard(self):
         self.record_activity("Opened Dashboard")
