@@ -1266,6 +1266,11 @@ class ProjectSetupWorker(QThread):
         self.failed_packages = []
         self._process = None
         self._cancel = False
+        # Do not let DevSuite's own activated environment leak into a new
+        # project's uv commands. uv should create/use the project's .venv.
+        self.command_environment = os.environ.copy()
+        self.command_environment.pop("VIRTUAL_ENV", None)
+        self.command_environment.pop("UV_PROJECT_ENVIRONMENT", None)
 
     def cancel(self):
         """Request cancellation and kill the running subprocess, if any."""
@@ -1287,6 +1292,7 @@ class ProjectSetupWorker(QThread):
             bufsize=1,
             encoding="utf-8",
             errors="replace",
+            env=self.command_environment,
         )
         try:
             if self._process.stdout is not None:
