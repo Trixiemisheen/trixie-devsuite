@@ -46,6 +46,7 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QShortcut,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -1455,6 +1456,9 @@ class DevSuiteWindow(QMainWindow):
         self.startup_page = self.settings.value(
             "startup_page", "Dashboard", str
         )
+        self.sidebar_collapsed = self.settings.value(
+            "sidebar_collapsed", False, bool
+        )
         self.project_search_roots = self.load_search_roots()
         self.recommended_packages = []
         self.favorite_projects = self.load_project_paths("favorite_projects")
@@ -1517,6 +1521,31 @@ class DevSuiteWindow(QMainWindow):
             QFrame#sidebar {
                 background-color: #11141C;
                 border-right: 1px solid #2A3040;
+            }
+
+            QPushButton#sidebar_toggle {
+                background-color: transparent;
+                color: #00E5FF;
+                border: 1px solid #303849;
+                border-radius: 7px;
+                font-size: 18px;
+                font-weight: bold;
+                padding: 4px;
+                text-align: center;
+            }
+
+            QPushButton#sidebar_toggle:hover {
+                background-color: #202633;
+                border-color: #00B8D4;
+            }
+
+            QSplitter::handle:horizontal {
+                background-color: #2A3040;
+                width: 4px;
+            }
+
+            QSplitter::handle:horizontal:hover {
+                background-color: #00B8D4;
             }
 
             QFrame#card {
@@ -1847,15 +1876,25 @@ class DevSuiteWindow(QMainWindow):
         # Sidebar
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
-        self.sidebar.setFixedWidth(230)
+        self.sidebar.setMinimumWidth(72)
+        self.sidebar.setMaximumWidth(360)
 
         sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(12, 18, 12, 18)
         sidebar_layout.setSpacing(8)
 
+        sidebar_header = QHBoxLayout()
+        self.sidebar_toggle_button = QPushButton("☰")
+        self.sidebar_toggle_button.setObjectName("sidebar_toggle")
+        self.sidebar_toggle_button.setToolTip("Collapse sidebar")
+        self.sidebar_toggle_button.setFixedSize(38, 38)
+        self.sidebar_toggle_button.clicked.connect(self.toggle_sidebar)
+        sidebar_header.addWidget(self.sidebar_toggle_button)
+
         brand = QLabel("TRIXIE DEVSUITE™")
         brand.setObjectName("brand")
-        sidebar_layout.addWidget(brand)
+        sidebar_header.addWidget(brand, 1)
+        sidebar_layout.addLayout(sidebar_header)
 
         section = QLabel("WORKSPACE")
         section.setObjectName("section")
@@ -1884,18 +1923,27 @@ class DevSuiteWindow(QMainWindow):
         support_nav = self.add_nav_button(sidebar_layout, "?   Support")
         support_nav.clicked.connect(self.show_support)
 
+        self.sidebar_nav_buttons = [
+            dashboard_nav, new_project_nav, projects_nav, environments_nav,
+            help_nav, troubleshooting_nav, support_nav,
+        ]
+
         sidebar_layout.addStretch()
 
         settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
         settings_button.clicked.connect(self.open_settings)
 
         version = QLabel("Trixie DevSuite • V 1.0.1")
+        self.sidebar_version_label = version
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
         )
         sidebar_layout.addWidget(version)
 
-        self.root_layout.addWidget(self.sidebar)
+        self.workspace_splitter = QSplitter(Qt.Horizontal)
+        self.workspace_splitter.setChildrenCollapsible(False)
+        self.workspace_splitter.addWidget(self.sidebar)
+        self.root_layout.addWidget(self.workspace_splitter, 1)
 
         # Main dashboard
         content = QWidget()
@@ -2059,7 +2107,10 @@ class DevSuiteWindow(QMainWindow):
         self.pages.addWidget(self.help_page)
         self.pages.addWidget(self.troubleshooting_page)
         self.pages.addWidget(self.support_page)
-        self.root_layout.addWidget(self.pages, 1)
+        self.workspace_splitter.addWidget(self.pages)
+        self.workspace_splitter.setStretchFactor(1, 1)
+        self.workspace_splitter.setSizes([230, max(1, self.width() - 230)])
+        self.apply_sidebar_state()
 
         self.help_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
         self.help_shortcut.activated.connect(self.show_help)
@@ -3746,9 +3797,46 @@ class DevSuiteWindow(QMainWindow):
         )
         self.content_layout.setSpacing(spacing)
 
-        sidebar_widths = {"Narrow": 200, "Standard": 230, "Wide": 280}
-        self.sidebar.setFixedWidth(
-            sidebar_widths.get(self.sidebar_width, 230)
+        self.apply_sidebar_state()
+
+    def apply_sidebar_state(self):
+        """Apply the persisted sidebar width/collapsed state."""
+        if not hasattr(self, "workspace_splitter"):
+            return
+
+        if self.sidebar_collapsed:
+            self.sidebar.setMinimumWidth(72)
+            self.sidebar.setMaximumWidth(72)
+            target_width = 72
+        else:
+            sidebar_widths = {"Narrow": 200, "Standard": 230, "Wide": 280}
+            target_width = sidebar_widths.get(self.sidebar_width, 230)
+            self.sidebar.setMinimumWidth(180)
+            self.sidebar.setMaximumWidth(360)
+
+        sizes = self.workspace_splitter.sizes()
+        available = max(1, sum(sizes) - target_width)
+        self.workspace_splitter.setSizes([target_width, available])
+
+        self.sidebar_toggle_button.setText("»" if self.sidebar_collapsed else "«")
+        self.sidebar_toggle_button.setToolTip(
+            "Expand sidebar" if self.sidebar_collapsed else "Collapse sidebar"
+        )
+        self.sidebar_version_label.setVisible(not self.sidebar_collapsed)
+        self.sidebar.findChild(QLabel, "brand").setVisible(not self.sidebar_collapsed)
+        self.sidebar.findChild(QLabel, "section").setVisible(not self.sidebar_collapsed)
+        for button in self.sidebar_nav_buttons:
+            full_text = button.property("sidebar_full_text") or button.text()
+            button.setProperty("sidebar_full_text", full_text)
+            button.setText(full_text.split()[0] if self.sidebar_collapsed else full_text)
+            button.setToolTip(full_text if self.sidebar_collapsed else "")
+
+    def toggle_sidebar(self):
+        self.sidebar_collapsed = not self.sidebar_collapsed
+        self.settings.setValue("sidebar_collapsed", self.sidebar_collapsed)
+        self.apply_sidebar_state()
+        self.record_activity(
+            "Collapsed sidebar" if self.sidebar_collapsed else "Expanded sidebar"
         )
 
     def apply_startup_page(self):
