@@ -195,6 +195,120 @@ def apply_theme_stylesheet(stylesheet, theme_name):
     return pattern.sub(lambda match: replacements[match.group()], stylesheet)
 
 
+class NotificationManager:
+    """Show lightweight in-app notifications and keep a small history."""
+
+    LEVEL_COLORS = {
+        "success": ("#163D20", "#68FF8A"),
+        "warning": ("#4A3212", "#FFCF66"),
+        "error": ("#4A1420", "#FF7185"),
+        "info": ("#12351B", "#7DEBFF"),
+    }
+
+    def __init__(self, window):
+        self.window = window
+        self.items = []
+        self.unread_count = 0
+        self.toasts = []
+
+    def notify(self, message, level="info", title="DevSuite"):
+        level = level if level in self.LEVEL_COLORS else "info"
+        item = {
+            "title": title,
+            "message": message,
+            "level": level,
+            "time": QDateTime.currentDateTime().toString("HH:mm:ss"),
+        }
+        self.items.insert(0, item)
+        self.items = self.items[:50]
+        self.unread_count += 1
+        self.update_button()
+        self.show_toast(item)
+
+    def update_button(self):
+        if not hasattr(self.window, "notification_button"):
+            return
+        count = f" {self.unread_count}" if self.unread_count else ""
+        self.window.notification_button.setText(f"♢{count}")
+        self.window.notification_button.setToolTip(
+            f"Notifications ({self.unread_count} unread)"
+        )
+
+    def show_toast(self, item):
+        background, foreground = self.LEVEL_COLORS[item["level"]]
+        toast = QLabel(
+            f"<b>{item['title']}</b><br>{item['message']}",
+            self.window,
+        )
+        toast.setTextFormat(Qt.RichText)
+        toast.setWordWrap(True)
+        toast.setMinimumWidth(280)
+        toast.setMaximumWidth(360)
+        toast.setStyleSheet(
+            "QLabel {"
+            f"background-color: {background}; color: {foreground};"
+            "border: 1px solid #303849; border-radius: 8px;"
+            "padding: 12px; font-size: 12px; }"
+        )
+        toast.adjustSize()
+        self.toasts.append(toast)
+        self.reposition_toasts()
+        toast.show()
+        QTimer.singleShot(4500, lambda: self.dismiss_toast(toast))
+
+    def dismiss_toast(self, toast):
+        if toast in self.toasts:
+            self.toasts.remove(toast)
+        toast.deleteLater()
+        self.reposition_toasts()
+
+    def reposition_toasts(self):
+        margin = 18
+        gap = 8
+        bottom = self.window.height() - margin
+        for toast in reversed(self.toasts):
+            toast.adjustSize()
+            bottom -= toast.height()
+            toast.move(self.window.width() - toast.width() - margin, bottom)
+            bottom -= gap
+
+    def open_center(self):
+        dialog = QDialog(self.window)
+        dialog.setWindowTitle("Notifications")
+        dialog.resize(520, 420)
+        layout = QVBoxLayout(dialog)
+        heading = QLabel("Notification center")
+        heading.setObjectName("heading")
+        layout.addWidget(heading)
+        entries = QListWidget()
+        for item in self.items:
+            entries.addItem(
+                f"[{item['time']}] {item['title']}: {item['message']}"
+            )
+        if not self.items:
+            entries.addItem("No notifications yet.")
+        entries.setWordWrap(True)
+        layout.addWidget(entries, 1)
+        actions = QHBoxLayout()
+        clear_button = QPushButton("Clear notifications")
+        clear_button.clicked.connect(lambda: self.clear(dialog, entries))
+        actions.addWidget(clear_button)
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        actions.addWidget(close_button)
+        layout.addLayout(actions)
+        self.unread_count = 0
+        self.update_button()
+        dialog.exec_()
+
+    def clear(self, dialog, entries):
+        self.items.clear()
+        self.unread_count = 0
+        entries.clear()
+        entries.addItem("No notifications yet.")
+        self.update_button()
+
+
 def read_project_metadata(project_path):
     """Extract dependency names and script entry-points from pyproject.toml."""
     pyproject = Path(project_path) / "pyproject.toml"
@@ -1445,6 +1559,7 @@ class DevSuiteWindow(QMainWindow):
         self.set_initial_window_geometry()
 
         self.settings = QSettings(APP_ORG, APP_NAME)
+        self.notifications = NotificationManager(self)
         self.interface_density = self.settings.value(
             "interface_density", "Comfortable", str
         )
@@ -1539,6 +1654,22 @@ class DevSuiteWindow(QMainWindow):
             }
 
             QPushButton#sidebar_toggle:hover {
+                background-color: #202633;
+                border-color: #00B8D4;
+            }
+
+            QPushButton#notification_button {
+                background-color: transparent;
+                color: #7DEBFF;
+                border: 1px solid #303849;
+                border-radius: 7px;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 4px;
+                text-align: center;
+            }
+
+            QPushButton#notification_button:hover {
                 background-color: #202633;
                 border-color: #00B8D4;
             }
@@ -1894,6 +2025,15 @@ class DevSuiteWindow(QMainWindow):
         self.sidebar_toggle_button.setFixedSize(38, 38)
         self.sidebar_toggle_button.clicked.connect(self.toggle_sidebar)
         sidebar_header.addWidget(self.sidebar_toggle_button)
+
+        self.notification_button = QPushButton("♢")
+        self.notification_button.setObjectName("notification_button")
+        self.notification_button.setToolTip("Notifications")
+        self.notification_button.setFixedSize(38, 38)
+        self.notification_button.clicked.connect(
+            self.notifications.open_center
+        )
+        sidebar_header.addWidget(self.notification_button)
 
         brand = QLabel("TRIXIE DEVSUITE™")
         brand.setObjectName("brand")
@@ -2796,6 +2936,11 @@ class DevSuiteWindow(QMainWindow):
             self.diagnostics_status.setText(
                 "All checks healthy" if not issues else f"{issues} issue{'s' if issues != 1 else ''} detected"
             )
+            self.notifications.notify(
+                "Diagnostics completed successfully." if not issues else f"Diagnostics found {issues} issue(s).",
+                "success" if not issues else "warning",
+                "Diagnostics",
+            )
             for name, status, detail in results:
                 self.record_activity(f"{status}: {name} — {detail}")
         self.diagnostics_worker.completed.connect(display)
@@ -2827,6 +2972,11 @@ class DevSuiteWindow(QMainWindow):
         def sync_finished(code):
             state = "completed successfully" if code == 0 else f"failed with exit code {code}"
             self.record_activity(f"uv sync {state}")
+            self.notifications.notify(
+                f"uv sync {state}.",
+                "success" if code == 0 else "error",
+                "Environment sync",
+            )
             self.diagnostics_sync_button.setEnabled(True)
             self.run_diagnostics()
         self.diagnostics_sync_worker.completed.connect(sync_finished)
@@ -3766,6 +3916,8 @@ class DevSuiteWindow(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.update_responsive_layout()
+        if hasattr(self, "notifications"):
+            self.notifications.reposition_toasts()
 
     def closeEvent(self, event):
         self.refresh_timer.stop()
@@ -4003,6 +4155,11 @@ class DevSuiteWindow(QMainWindow):
             self.apply_sidebar_state(force_width=True)
             self.refresh_workspace_views()
             self.record_activity("Saved application settings")
+            self.notifications.notify(
+                "Your application settings were saved.",
+                "success",
+                "Settings",
+            )
 
     def create_new_project(self, *_):
         """Two-step wizard: details → package advisor → confirm → create."""
@@ -4114,6 +4271,13 @@ class DevSuiteWindow(QMainWindow):
         def setup_finished(result):
             self.record_activity(
                 f"Project setup {'completed' if result.get('success') else 'failed'}: {project_name}"
+            )
+            self.notifications.notify(
+                f"Project '{project_name}' was created successfully."
+                if result.get("success")
+                else f"Project setup needs attention: {project_name}.",
+                "success" if result.get("success") else "error",
+                "Project setup",
             )
             progress_dialog.progress_bar.setRange(0, 1)
             progress_dialog.progress_bar.setValue(1)
