@@ -57,6 +57,41 @@ SEARCH_ROOTS_KEY = "project_search_roots"
 
 THEME_COLOR_MAPS = {
     "Dev Cyan": {},
+    "Hacker Red": {
+        "#151821": "#080B0A",
+        "#11141C": "#050706",
+        "#202633": "#0E1511",
+        "#293548": "#14251A",
+        "#303849": "#1C3323",
+        "#2A3040": "#16251A",
+        "#E6EDF3": "#D7FFE2",
+        "#8B949E": "#7FA88A",
+        "#00E5FF": "#FF304F",
+        "#00B8D4": "#D51F3A",
+        "#10141C": "#060908",
+        "#182B3D": "#0B1E13",
+        "#24506A": "#174A27",
+        "#7DEBFF": "#68FF8A",
+        "#F4FBFF": "#EDFFF1",
+        "#A9C6D4": "#9BC5A5",
+        "#3B5265": "#2C5936",
+        "#111A24": "#08130B",
+        "#2B3C4B": "#1C4325",
+        "#AFC1CC": "#A8D4AF",
+        "#1D3444": "#12351B",
+        "#0B687E": "#8F1026",
+        "#FFFFFF": "#FFFFFF",
+        "#1B222E": "#0C1810",
+        "#DCEAF1": "#CFEFD4",
+        "#146A80": "#7B1427",
+        "#164653": "#173D20",
+        "#697586": "#63806A",
+        "#21152D": "#180C0F",
+        "#6A3F72": "#69202D",
+        "#FF9DE6": "#FF7185",
+        "#FFF4FC": "#FFECEF",
+        "#D7B5D0": "#DCA6AE",
+    },
     "Neon Sunset": {
         "#151821": "#160F1B",
         "#11141C": "#100B14",
@@ -197,7 +232,7 @@ class SettingsDialog(QDialog):
         self.setMinimumSize(440, 480)
         self.resize(520, 620)
 
-        self.setStyleSheet("""
+        self.setStyleSheet(apply_theme_stylesheet("""
             QDialog {
                 background-color: #151821;
                 color: #E6EDF3;
@@ -254,7 +289,7 @@ class SettingsDialog(QDialog):
             QPushButton:hover {
                 background-color: #293548;
             }
-        """)
+        """, parent.color_theme if parent else "Hacker Red"))
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -525,7 +560,7 @@ class SettingsDialog(QDialog):
             return
 
         density = data.get("interface_density")
-        color_theme = data.get("color_theme", "Dev Cyan")
+        color_theme = data.get("color_theme", "Hacker Red")
         sidebar_width = data.get("sidebar_width", "Standard")
         startup_page = data.get("startup_page", "Dashboard")
         location = data.get("default_project_location")
@@ -575,7 +610,7 @@ class SettingsDialog(QDialog):
 
     def reset_defaults(self):
         self.density_combo.setCurrentText("Comfortable")
-        self.color_theme_combo.setCurrentText("Dev Cyan")
+        self.color_theme_combo.setCurrentText("Hacker Red")
         self.sidebar_width_combo.setCurrentText("Standard")
         self.startup_page_combo.setCurrentText("Dashboard")
         self.project_location_input.setText(str(Path.home() / "Projects"))
@@ -1421,7 +1456,7 @@ class DevSuiteWindow(QMainWindow):
             "interface_density", "Comfortable", str
         )
         self.color_theme = self.settings.value(
-            "color_theme", "Dev Cyan", str
+            "color_theme", "Hacker Red", str
         )
         self.sidebar_width = self.settings.value(
             "sidebar_width", "Standard", str
