@@ -338,7 +338,7 @@ class SettingsDialog(QDialog):
         settings_layout.addWidget(QLabel("Startup page"))
         self.startup_page_combo = QComboBox()
         self.startup_page_combo.addItems(
-            ["Dashboard", "My Projects", "Environments", "Help", "Troubleshooting"]
+            ["Dashboard", "My Projects", "Environments", "Help", "Troubleshooting", "Support"]
         )
         if parent:
             self.startup_page_combo.setCurrentText(parent.startup_page)
@@ -572,7 +572,7 @@ class SettingsDialog(QDialog):
             density in {"Comfortable", "Compact"}
             and color_theme in THEME_COLOR_MAPS
             and sidebar_width in {"Narrow", "Standard", "Wide"}
-            and startup_page in {"Dashboard", "My Projects", "Environments", "Help", "Troubleshooting"}
+            and startup_page in {"Dashboard", "My Projects", "Environments", "Help", "Troubleshooting", "Support"}
             and isinstance(location, str) and bool(location.strip())
             and python_version in {"3.12", "3.13", "3.14"}
             and isinstance(auto_refresh, bool)
@@ -1718,6 +1718,75 @@ class DevSuiteWindow(QMainWindow):
                 border-color: #00B8D4;
                 color: #FFFFFF;
             }
+
+            QFrame#support_hero {
+                background-color: #182B3D;
+                border: 1px solid #24506A;
+                border-radius: 14px;
+            }
+
+            QLabel#support_badge {
+                background-color: #00B8D4;
+                color: #10141C;
+                border-radius: 14px;
+                font-size: 16px;
+                font-weight: bold;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
+                padding: 4px;
+                qproperty-alignment: AlignCenter;
+            }
+
+            QLabel#support_brand {
+                color: #F4FBFF;
+                font-size: 18px;
+                font-weight: bold;
+            }
+
+            QLabel#support_description {
+                color: #A9C6D4;
+                font-size: 13px;
+            }
+
+            QFrame#support_column {
+                background-color: #202633;
+                border: 1px solid #303849;
+                border-radius: 10px;
+            }
+
+            QLabel#support_section {
+                color: #7DEBFF;
+                font-size: 12px;
+                font-weight: bold;
+                letter-spacing: 1px;
+            }
+
+            QPushButton#support_link {
+                background-color: transparent;
+                color: #AFC1CC;
+                padding: 5px 0;
+                text-align: left;
+            }
+
+            QPushButton#support_link:hover {
+                color: #00E5FF;
+            }
+
+            QLabel#support_detail {
+                background-color: #111A24;
+                border: 1px solid #2B3C4B;
+                border-radius: 10px;
+                color: #DCEAF1;
+                font-size: 13px;
+                padding: 14px;
+            }
+
+            QLabel#support_footer {
+                color: #697586;
+                font-size: 11px;
+            }
         """
         self.setStyleSheet(
             apply_theme_stylesheet(self.base_stylesheet, self.color_theme)
@@ -1805,6 +1874,9 @@ class DevSuiteWindow(QMainWindow):
             sidebar_layout, "!   Troubleshooting"
         )
         troubleshooting_nav.clicked.connect(self.show_troubleshooting)
+
+        support_nav = self.add_nav_button(sidebar_layout, "?   Support")
+        support_nav.clicked.connect(self.show_support)
 
         sidebar_layout.addStretch()
 
@@ -1975,10 +2047,12 @@ class DevSuiteWindow(QMainWindow):
         self.environments_page = self.build_environments_page()
         self.help_page = self.build_help_page()
         self.troubleshooting_page = self.build_troubleshooting_page()
+        self.support_page = self.build_support_page()
         self.pages.addWidget(self.projects_page)
         self.pages.addWidget(self.environments_page)
         self.pages.addWidget(self.help_page)
         self.pages.addWidget(self.troubleshooting_page)
+        self.pages.addWidget(self.support_page)
         self.root_layout.addWidget(self.pages, 1)
 
         self.help_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
@@ -2407,6 +2481,158 @@ class DevSuiteWindow(QMainWindow):
         self.help_topics_list.setCurrentRow(0)
         self.update_help_resources("Welcome")
         return page
+
+    def build_support_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
+
+        hero = QFrame()
+        hero.setObjectName("support_hero")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(22, 20, 22, 20)
+        hero_layout.setSpacing(8)
+
+        identity = QHBoxLayout()
+        badge = QLabel("T")
+        badge.setObjectName("support_badge")
+        identity.addWidget(badge)
+        brand = QLabel("TRIXIE DEVSUITE")
+        brand.setObjectName("support_brand")
+        identity.addWidget(brand)
+        identity.addStretch()
+        hero_layout.addLayout(identity)
+
+        description = QLabel(
+            "A practical developer workspace for creating Python projects, "
+            "managing environments, and keeping your toolchain healthy."
+        )
+        description.setObjectName("support_description")
+        description.setWordWrap(True)
+        hero_layout.addWidget(description)
+        layout.addWidget(hero)
+
+        columns = QHBoxLayout()
+        columns.setSpacing(14)
+
+        def add_column(title, links):
+            column = QFrame()
+            column.setObjectName("support_column")
+            column_layout = QVBoxLayout(column)
+            column_layout.setContentsMargins(16, 14, 16, 14)
+            column_layout.setSpacing(3)
+            section = QLabel(title.upper())
+            section.setObjectName("support_section")
+            column_layout.addWidget(section)
+            for label, key in links:
+                button = QPushButton(label)
+                button.setObjectName("support_link")
+                button.clicked.connect(lambda _checked=False, value=key: self.show_support_section(value))
+                column_layout.addWidget(button)
+            column_layout.addStretch()
+            columns.addWidget(column, 1)
+
+        add_column("Services", [
+            ("Project scaffolding", "services"),
+            ("Python environments", "services"),
+            ("uv & Git workflow", "services"),
+            ("Diagnostics and recovery", "services"),
+        ])
+        add_column("Company", [
+            ("Home", "home"),
+            ("About DevSuite", "about"),
+            ("Privacy", "privacy"),
+            ("Terms of use", "terms"),
+            ("Sitemap", "sitemap"),
+        ])
+        add_column("Support", [
+            ("Getting started", "getting_started"),
+            ("Troubleshooting", "troubleshooting"),
+            ("Activity log", "activity"),
+            ("Contact support", "contact"),
+        ])
+        layout.addLayout(columns)
+
+        self.support_detail = QLabel()
+        self.support_detail.setObjectName("support_detail")
+        self.support_detail.setWordWrap(True)
+        self.support_detail.setMinimumHeight(120)
+        layout.addWidget(self.support_detail)
+
+        footer = QLabel(
+            "TRIXIE DEVSUITE  •  Built with Python & PyQt5  •  Local-first developer tooling"
+        )
+        footer.setObjectName("support_footer")
+        footer.setWordWrap(True)
+        layout.addWidget(footer)
+        self.show_support_section("home")
+        return page
+
+    def show_support_section(self, section):
+        sections = {
+            "home": (
+                "Welcome to Support\n\n"
+                "Choose a topic above to learn what DevSuite offers or find a "
+                "direct path to a common task."
+            ),
+            "services": (
+                "Services we offer\n\n"
+                "• Create Python projects from ready-to-use templates.\n"
+                "• Discover projects and manage their virtual environments.\n"
+                "• Open terminals, editors, folders, and project entry points.\n"
+                "• Run diagnostics and setup recovery with uv.\n"
+                "• Keep a readable activity log of important app actions."
+            ),
+            "about": (
+                "About DevSuite\n\n"
+                "DevSuite is a focused workspace for Python developers. It keeps "
+                "project setup, tool discovery, environments, and troubleshooting "
+                "in one lightweight desktop app."
+            ),
+            "privacy": (
+                "Privacy\n\n"
+                "DevSuite is local-first. Your project paths, preferences, and "
+                "activity stay on this computer unless you explicitly open an "
+                "external website or use a project tool that communicates online."
+            ),
+            "terms": (
+                "Terms of use\n\n"
+                "Use DevSuite responsibly and review commands before running them. "
+                "The app helps coordinate local developer tools; you remain in "
+                "control of your files, environments, credentials, and projects."
+            ),
+            "sitemap": (
+                "Sitemap\n\n"
+                "Dashboard  •  My Projects  •  Environments  •  Help  •  "
+                "Troubleshooting  •  Support  •  Settings"
+            ),
+            "getting_started": (
+                "Getting started\n\n"
+                "1. Run diagnostics if you are unsure whether the toolchain is ready.\n"
+                "2. Create a project and choose a template.\n"
+                "3. Open the project in your editor or terminal.\n"
+                "4. Use Environments and Troubleshooting when you need to inspect or recover setup."
+            ),
+            "troubleshooting": (
+                "Troubleshooting\n\n"
+                "Open the Troubleshooting page from the sidebar to run diagnostics, "
+                "sync a project with uv, and inspect the activity log."
+            ),
+            "activity": (
+                "Activity log\n\n"
+                "Important navigation, settings, diagnostics, sync, and project "
+                "setup events are recorded on the Troubleshooting page."
+            ),
+            "contact": (
+                "Contact support\n\n"
+                "For help, include the project context, the exact error, and the "
+                "latest activity-log entries. This makes troubleshooting faster "
+                "and avoids exposing unnecessary credentials or source code."
+            ),
+        }
+        self.support_detail.setText(sections.get(section, sections["home"]))
+        self.record_activity(f"Viewed Support: {section}")
 
     def build_troubleshooting_page(self):
         page = QWidget()
@@ -2866,6 +3092,12 @@ class DevSuiteWindow(QMainWindow):
             f"Selected project: {project}" if project else "Select a project to run setup sync."
         )
         self.record_activity("Opened Troubleshooting")
+
+    def show_support(self):
+        self.status_page_label.setText("Page: Support")
+        self.pages.setCurrentWidget(self.support_page)
+        self.show_support_section("home")
+        self.record_activity("Opened Support")
 
     def show_help(self, topic="Welcome"):
         self.record_activity(f"Opened Help: {topic}")
@@ -3520,6 +3752,7 @@ class DevSuiteWindow(QMainWindow):
             "Environments": self.show_environments,
             "Help": self.show_help,
             "Troubleshooting": self.show_troubleshooting,
+            "Support": self.show_support,
         }
         page_actions.get(self.startup_page, self.show_dashboard)()
 
