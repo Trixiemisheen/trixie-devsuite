@@ -46,8 +46,6 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QShortcut,
-    QSizePolicy,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -1569,9 +1567,6 @@ class DevSuiteWindow(QMainWindow):
         self.sidebar_width = self.settings.value(
             "sidebar_width", "Standard", str
         )
-        self.sidebar_custom_width = self.settings.value(
-            "sidebar_custom_width", 230, int
-        )
         self.startup_page = self.settings.value(
             "startup_page", "Dashboard", str
         )
@@ -1672,15 +1667,6 @@ class DevSuiteWindow(QMainWindow):
             QPushButton#notification_button:hover {
                 background-color: #202633;
                 border-color: #00B8D4;
-            }
-
-            QSplitter::handle:horizontal {
-                background-color: #2A3040;
-                width: 4px;
-            }
-
-            QSplitter::handle:horizontal:hover {
-                background-color: #00B8D4;
             }
 
             QFrame#card {
@@ -2084,18 +2070,7 @@ class DevSuiteWindow(QMainWindow):
         )
         sidebar_layout.addWidget(version)
 
-        self.workspace_splitter = QSplitter(Qt.Horizontal)
-        self.workspace_splitter.setChildrenCollapsible(False)
-        self.workspace_splitter.setOpaqueResize(True)
-        self.workspace_splitter.setHandleWidth(6)
-        self.workspace_splitter.splitterMoved.connect(
-            self.remember_sidebar_width
-        )
-        self.sidebar.setSizePolicy(
-            QSizePolicy.Preferred, QSizePolicy.Expanding
-        )
-        self.workspace_splitter.addWidget(self.sidebar)
-        self.root_layout.addWidget(self.workspace_splitter, 1)
+        self.root_layout.addWidget(self.sidebar)
 
         # Main dashboard
         content = QWidget()
@@ -2259,9 +2234,7 @@ class DevSuiteWindow(QMainWindow):
         self.pages.addWidget(self.help_page)
         self.pages.addWidget(self.troubleshooting_page)
         self.pages.addWidget(self.support_page)
-        self.workspace_splitter.addWidget(self.pages)
-        self.workspace_splitter.setStretchFactor(1, 1)
-        self.workspace_splitter.setSizes([230, max(1, self.width() - 230)])
+        self.root_layout.addWidget(self.pages, 1)
         self.apply_sidebar_state()
 
         self.help_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
@@ -3965,30 +3938,14 @@ class DevSuiteWindow(QMainWindow):
 
     def apply_sidebar_state(self, force_width=False):
         """Apply the persisted sidebar width/collapsed state."""
-        if not hasattr(self, "workspace_splitter"):
-            return
-
         if self.sidebar_collapsed:
             self.sidebar.setMinimumWidth(72)
             self.sidebar.setMaximumWidth(72)
-            target_width = 72
         else:
             sidebar_widths = {"Narrow": 200, "Standard": 230, "Wide": 280}
-            preset_width = sidebar_widths.get(self.sidebar_width, 230)
-            target_width = preset_width if force_width else (
-                self.sidebar_custom_width or preset_width
-            )
-            self.sidebar.setMinimumWidth(180)
-            self.sidebar.setMaximumWidth(480)
-            if force_width:
-                self.sidebar_custom_width = target_width
-                self.settings.setValue("sidebar_custom_width", target_width)
-
-        if force_width or not getattr(self, "_sidebar_width_applied", False):
-            sizes = self.workspace_splitter.sizes()
-            available = max(1, sum(sizes) - target_width)
-            self.workspace_splitter.setSizes([target_width, available])
-            self._sidebar_width_applied = True
+            width = sidebar_widths.get(self.sidebar_width, 230)
+            self.sidebar.setMinimumWidth(width)
+            self.sidebar.setMaximumWidth(width)
 
         self.sidebar_toggle_button.setText("»" if self.sidebar_collapsed else "«")
         self.sidebar_toggle_button.setToolTip(
@@ -4002,14 +3959,6 @@ class DevSuiteWindow(QMainWindow):
             button.setProperty("sidebar_full_text", full_text)
             button.setText(full_text.split()[0] if self.sidebar_collapsed else full_text)
             button.setToolTip(full_text if self.sidebar_collapsed else "")
-
-    def remember_sidebar_width(self, position, _index):
-        """Persist a user-dragged sidebar width like VS Code does."""
-        if self.sidebar_collapsed or position < 180:
-            return
-        self.sidebar_custom_width = min(position, 480)
-        self.settings.setValue("sidebar_custom_width", self.sidebar_custom_width)
-        self._sidebar_width_applied = True
 
     def toggle_sidebar(self):
         self.sidebar_collapsed = not self.sidebar_collapsed
