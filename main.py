@@ -46,6 +46,7 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QShortcut,
+    QSizePolicy,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -1453,6 +1454,9 @@ class DevSuiteWindow(QMainWindow):
         self.sidebar_width = self.settings.value(
             "sidebar_width", "Standard", str
         )
+        self.sidebar_custom_width = self.settings.value(
+            "sidebar_custom_width", 230, int
+        )
         self.startup_page = self.settings.value(
             "startup_page", "Dashboard", str
         )
@@ -1942,6 +1946,14 @@ class DevSuiteWindow(QMainWindow):
 
         self.workspace_splitter = QSplitter(Qt.Horizontal)
         self.workspace_splitter.setChildrenCollapsible(False)
+        self.workspace_splitter.setOpaqueResize(True)
+        self.workspace_splitter.setHandleWidth(6)
+        self.workspace_splitter.splitterMoved.connect(
+            self.remember_sidebar_width
+        )
+        self.sidebar.setSizePolicy(
+            QSizePolicy.Preferred, QSizePolicy.Expanding
+        )
         self.workspace_splitter.addWidget(self.sidebar)
         self.root_layout.addWidget(self.workspace_splitter, 1)
 
@@ -3810,9 +3822,15 @@ class DevSuiteWindow(QMainWindow):
             target_width = 72
         else:
             sidebar_widths = {"Narrow": 200, "Standard": 230, "Wide": 280}
-            target_width = sidebar_widths.get(self.sidebar_width, 230)
+            preset_width = sidebar_widths.get(self.sidebar_width, 230)
+            target_width = preset_width if force_width else (
+                self.sidebar_custom_width or preset_width
+            )
             self.sidebar.setMinimumWidth(180)
-            self.sidebar.setMaximumWidth(360)
+            self.sidebar.setMaximumWidth(480)
+            if force_width:
+                self.sidebar_custom_width = target_width
+                self.settings.setValue("sidebar_custom_width", target_width)
 
         if force_width or not getattr(self, "_sidebar_width_applied", False):
             sizes = self.workspace_splitter.sizes()
@@ -3833,10 +3851,19 @@ class DevSuiteWindow(QMainWindow):
             button.setText(full_text.split()[0] if self.sidebar_collapsed else full_text)
             button.setToolTip(full_text if self.sidebar_collapsed else "")
 
+    def remember_sidebar_width(self, position, _index):
+        """Persist a user-dragged sidebar width like VS Code does."""
+        if self.sidebar_collapsed or position < 180:
+            return
+        self.sidebar_custom_width = min(position, 480)
+        self.settings.setValue("sidebar_custom_width", self.sidebar_custom_width)
+        self._sidebar_width_applied = True
+
     def toggle_sidebar(self):
         self.sidebar_collapsed = not self.sidebar_collapsed
         self.settings.setValue("sidebar_collapsed", self.sidebar_collapsed)
-        self.apply_sidebar_state(force_width=True)
+        self._sidebar_width_applied = False
+        self.apply_sidebar_state(force_width=self.sidebar_collapsed)
         self.record_activity(
             "Collapsed sidebar" if self.sidebar_collapsed else "Expanded sidebar"
         )
