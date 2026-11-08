@@ -338,7 +338,7 @@ class SettingsDialog(QDialog):
         settings_layout.addWidget(QLabel("Startup page"))
         self.startup_page_combo = QComboBox()
         self.startup_page_combo.addItems(
-            ["Dashboard", "My Projects", "Environments", "Help"]
+            ["Dashboard", "My Projects", "Environments", "Help", "Troubleshooting"]
         )
         if parent:
             self.startup_page_combo.setCurrentText(parent.startup_page)
@@ -572,7 +572,7 @@ class SettingsDialog(QDialog):
             density in {"Comfortable", "Compact"}
             and color_theme in THEME_COLOR_MAPS
             and sidebar_width in {"Narrow", "Standard", "Wide"}
-            and startup_page in {"Dashboard", "My Projects", "Environments", "Help"}
+            and startup_page in {"Dashboard", "My Projects", "Environments", "Help", "Troubleshooting"}
             and isinstance(location, str) and bool(location.strip())
             and python_version in {"3.12", "3.13", "3.14"}
             and isinstance(auto_refresh, bool)
@@ -895,21 +895,6 @@ HELP_TOPICS = {
         "to view packages through uv.\n\n"
         "DevSuite never deletes or modifies an existing environment while "
         "refreshing this page."
-    ),
-    "Settings": (
-        "Settings\n\n"
-        "Interface density changes dashboard spacing. Project search folders "
-        "control where DevSuite looks for projects."
-    ),
-    "Troubleshooting": (
-        "Troubleshooting\n\n"
-        "• uv unavailable: install uv and ensure it is on PATH.\n"
-        "• Git unavailable: install Git and ensure git is on PATH.\n"
-        "• No projects found: add the correct parent folder in Settings.\n"
-        "• No environment found: run `uv sync` in the project folder.\n"
-        "• Project will not run: make sure the project contains main.py.\n"
-        "• Terminal unavailable: install PowerShell or a supported terminal.\n\n"
-        "The setup progress window shows command output and failure details."
     ),
     "About & Owner": (
         "About Trixie DevSuite\n\n"
@@ -1816,6 +1801,11 @@ class DevSuiteWindow(QMainWindow):
         help_nav = self.add_nav_button(sidebar_layout, "?   Help")
         help_nav.clicked.connect(self.show_help)
 
+        troubleshooting_nav = self.add_nav_button(
+            sidebar_layout, "!   Troubleshooting"
+        )
+        troubleshooting_nav.clicked.connect(self.show_troubleshooting)
+
         sidebar_layout.addStretch()
 
         settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
@@ -1984,9 +1974,11 @@ class DevSuiteWindow(QMainWindow):
         self.projects_page = self.build_projects_page()
         self.environments_page = self.build_environments_page()
         self.help_page = self.build_help_page()
+        self.troubleshooting_page = self.build_troubleshooting_page()
         self.pages.addWidget(self.projects_page)
         self.pages.addWidget(self.environments_page)
         self.pages.addWidget(self.help_page)
+        self.pages.addWidget(self.troubleshooting_page)
         self.root_layout.addWidget(self.pages, 1)
 
         self.help_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
@@ -2361,38 +2353,6 @@ class DevSuiteWindow(QMainWindow):
         content_layout.addWidget(self.help_topics_list)
         self.help_content_stack = QStackedWidget()
         self.help_content_stack.addWidget(self.help_article)
-        diagnostics_page = QWidget()
-        diagnostics_layout = QVBoxLayout(diagnostics_page)
-        diagnostics_layout.setContentsMargins(12, 8, 4, 4)
-        diagnostics_layout.setSpacing(10)
-        diagnostics_header = QHBoxLayout()
-        self.diagnostics_status = QLabel("Diagnostics have not been run yet")
-        self.diagnostics_status.setStyleSheet("font-size: 16px; font-weight: bold;")
-        diagnostics_header.addWidget(self.diagnostics_status, 1)
-        self.diagnostics_run_button = QPushButton("Run Full Diagnostics")
-        self.diagnostics_run_button.clicked.connect(self.run_diagnostics)
-        diagnostics_header.addWidget(self.diagnostics_run_button)
-        diagnostics_layout.addLayout(diagnostics_header)
-        diagnostics_layout.addWidget(QLabel("DEPENDENCY SYSTEM CHECKS"))
-        self.diagnostics_results = QPlainTextEdit()
-        self.diagnostics_results.setObjectName("help_article")
-        self.diagnostics_results.setReadOnly(True)
-        self.diagnostics_results.setMaximumHeight(150)
-        diagnostics_layout.addWidget(self.diagnostics_results)
-        action_row = QHBoxLayout()
-        self.diagnostics_project_label = QLabel("Select a project to run setup sync.")
-        action_row.addWidget(self.diagnostics_project_label, 1)
-        self.diagnostics_sync_button = QPushButton("Setup Sync · uv sync")
-        self.diagnostics_sync_button.clicked.connect(self.run_diagnostics_sync)
-        action_row.addWidget(self.diagnostics_sync_button)
-        diagnostics_layout.addLayout(action_row)
-        diagnostics_layout.addWidget(QLabel("LIVE LOG & TERMINAL OUTPUT"))
-        self.diagnostics_log = QPlainTextEdit()
-        self.diagnostics_log.setObjectName("help_article")
-        self.diagnostics_log.setReadOnly(True)
-        self.diagnostics_log.setPlaceholderText("Diagnostic and setup output will appear here.")
-        diagnostics_layout.addWidget(self.diagnostics_log, 1)
-        self.help_content_stack.addWidget(diagnostics_page)
         content_layout.addWidget(self.help_content_stack, 1)
         layout.addLayout(content_layout, 1)
 
@@ -2409,17 +2369,8 @@ class DevSuiteWindow(QMainWindow):
         def display_topic(item):
             if item is not None:
                 topic = item.text()
-                troubleshooting = topic == "Troubleshooting"
-                self.help_content_stack.setCurrentIndex(1 if troubleshooting else 0)
-                if troubleshooting:
-                    selected = self.projects_list.currentItem()
-                    project = selected.data(256) if selected else None
-                    self.diagnostics_project_label.setText(
-                        f"Selected project: {project}" if project else "Select a project to run setup sync."
-                    )
-                    self.run_diagnostics()
-                else:
-                    self.help_article.setPlainText(HELP_TOPICS[topic])
+                self.help_content_stack.setCurrentIndex(0)
+                self.help_article.setPlainText(HELP_TOPICS[topic])
                 self.update_help_resources(topic)
 
         def filter_topics():
@@ -2457,6 +2408,55 @@ class DevSuiteWindow(QMainWindow):
         self.update_help_resources("Welcome")
         return page
 
+    def build_troubleshooting_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(14)
+
+        heading = QLabel("Troubleshooting & Activity")
+        heading.setObjectName("heading")
+        layout.addWidget(heading)
+        subtitle = QLabel(
+            "Run system checks, sync a project, and review everything DevSuite has done."
+        )
+        subtitle.setObjectName("subtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        diagnostics_header = QHBoxLayout()
+        self.diagnostics_status = QLabel("Diagnostics have not been run yet")
+        self.diagnostics_status.setStyleSheet("font-size: 16px; font-weight: bold;")
+        diagnostics_header.addWidget(self.diagnostics_status, 1)
+        self.diagnostics_run_button = QPushButton("Run Full Diagnostics")
+        self.diagnostics_run_button.clicked.connect(self.run_diagnostics)
+        diagnostics_header.addWidget(self.diagnostics_run_button)
+        layout.addLayout(diagnostics_header)
+        layout.addWidget(QLabel("DEPENDENCY SYSTEM CHECKS"))
+        self.diagnostics_results = QPlainTextEdit()
+        self.diagnostics_results.setObjectName("help_article")
+        self.diagnostics_results.setReadOnly(True)
+        self.diagnostics_results.setMaximumHeight(150)
+        layout.addWidget(self.diagnostics_results)
+
+        action_row = QHBoxLayout()
+        self.diagnostics_project_label = QLabel("Select a project to run setup sync.")
+        action_row.addWidget(self.diagnostics_project_label, 1)
+        self.diagnostics_sync_button = QPushButton("Setup Sync · uv sync")
+        self.diagnostics_sync_button.clicked.connect(self.run_diagnostics_sync)
+        action_row.addWidget(self.diagnostics_sync_button)
+        layout.addLayout(action_row)
+
+        layout.addWidget(QLabel("ACTIVITY LOG & TERMINAL OUTPUT"))
+        self.diagnostics_log = QPlainTextEdit()
+        self.diagnostics_log.setObjectName("help_article")
+        self.diagnostics_log.setReadOnly(True)
+        self.diagnostics_log.setPlaceholderText(
+            "App activity and diagnostic output will appear here."
+        )
+        layout.addWidget(self.diagnostics_log, 1)
+        return page
+
     def update_help_resources(self, topic):
         while self.help_resources_layout.count():
             item = self.help_resources_layout.takeAt(0)
@@ -2475,15 +2475,19 @@ class DevSuiteWindow(QMainWindow):
             self.help_resources_layout.addWidget(button)
         self.help_resources_layout.addStretch()
 
+    def record_activity(self, message):
+        if not hasattr(self, "diagnostics_log"):
+            return
+        timestamp = QDateTime.currentDateTime().toString("HH:mm:ss")
+        self.diagnostics_log.appendPlainText(f"[{timestamp}] {message}")
+
     def run_diagnostics(self):
         selected = getattr(self, "projects_list", None)
         item = selected.currentItem() if selected else None
         project = item.data(256) if item else None
         self.diagnostics_run_button.setEnabled(False)
         self.diagnostics_status.setText("Scanning system…")
-        self.diagnostics_log.appendPlainText(
-            f"[{QDateTime.currentDateTime().toString('HH:mm:ss')}] Starting system diagnostics"
-        )
+        self.record_activity("Starting system diagnostics")
         self.diagnostics_worker = DiagnosticsWorker(project)
         def display(results):
             rows = []
@@ -2498,9 +2502,7 @@ class DevSuiteWindow(QMainWindow):
                 "All checks healthy" if not issues else f"{issues} issue{'s' if issues != 1 else ''} detected"
             )
             for name, status, detail in results:
-                self.diagnostics_log.appendPlainText(
-                    f"[{QDateTime.currentDateTime().toString('HH:mm:ss')}] {status}: {name} — {detail}"
-                )
+                self.record_activity(f"{status}: {name} — {detail}")
         self.diagnostics_worker.completed.connect(display)
         self.diagnostics_worker.finished.connect(
             lambda: self.diagnostics_run_button.setEnabled(True)
@@ -2524,16 +2526,12 @@ class DevSuiteWindow(QMainWindow):
             )
             return
         self.diagnostics_sync_button.setEnabled(False)
-        self.diagnostics_log.appendPlainText(
-            f"[{QDateTime.currentDateTime().toString('HH:mm:ss')}] Running uv sync in {project}"
-        )
+        self.record_activity(f"Running uv sync in {project}")
         self.diagnostics_sync_worker = SyncWorker(project)
-        self.diagnostics_sync_worker.output.connect(self.diagnostics_log.appendPlainText)
+        self.diagnostics_sync_worker.output.connect(self.record_activity)
         def sync_finished(code):
             state = "completed successfully" if code == 0 else f"failed with exit code {code}"
-            self.diagnostics_log.appendPlainText(
-                f"[{QDateTime.currentDateTime().toString('HH:mm:ss')}] uv sync {state}"
-            )
+            self.record_activity(f"uv sync {state}")
             self.diagnostics_sync_button.setEnabled(True)
             self.run_diagnostics()
         self.diagnostics_sync_worker.completed.connect(sync_finished)
@@ -2842,21 +2840,35 @@ class DevSuiteWindow(QMainWindow):
         self.statusBar().showMessage("Workspace refreshed", 3000)
 
     def show_dashboard(self):
+        self.record_activity("Opened Dashboard")
         self.pages.setCurrentIndex(0)
         self.status_page_label.setText("Page: Dashboard")
         self.refresh_workspace_views()
 
     def show_projects(self):
+        self.record_activity("Opened My Projects")
         self.pages.setCurrentIndex(1)
         self.status_page_label.setText("Page: My Projects")
         self.refresh_workspace_views()
 
     def show_environments(self):
+        self.record_activity("Opened Environments")
         self.pages.setCurrentIndex(2)
         self.status_page_label.setText("Page: Environments")
         self.refresh_workspace_views()
 
+    def show_troubleshooting(self):
+        self.status_page_label.setText("Page: Troubleshooting")
+        self.pages.setCurrentWidget(self.troubleshooting_page)
+        selected = self.projects_list.currentItem()
+        project = selected.data(256) if selected else None
+        self.diagnostics_project_label.setText(
+            f"Selected project: {project}" if project else "Select a project to run setup sync."
+        )
+        self.record_activity("Opened Troubleshooting")
+
     def show_help(self, topic="Welcome"):
+        self.record_activity(f"Opened Help: {topic}")
         self.pages.setCurrentIndex(3)
         self.status_page_label.setText("Page: Help")
         for index in range(self.help_topics_list.count()):
@@ -3507,6 +3519,7 @@ class DevSuiteWindow(QMainWindow):
             "My Projects": self.show_projects,
             "Environments": self.show_environments,
             "Help": self.show_help,
+            "Troubleshooting": self.show_troubleshooting,
         }
         page_actions.get(self.startup_page, self.show_dashboard)()
 
@@ -3632,6 +3645,7 @@ class DevSuiteWindow(QMainWindow):
             )
             self.update_responsive_layout()
             self.refresh_workspace_views()
+            self.record_activity("Saved application settings")
 
     def create_new_project(self, *_):
         """Two-step wizard: details → package advisor → confirm → create."""
@@ -3741,6 +3755,9 @@ class DevSuiteWindow(QMainWindow):
         worker.log_line.connect(progress_dialog.output.appendPlainText)
 
         def setup_finished(result):
+            self.record_activity(
+                f"Project setup {'completed' if result.get('success') else 'failed'}: {project_name}"
+            )
             progress_dialog.progress_bar.setRange(0, 1)
             progress_dialog.progress_bar.setValue(1)
             progress_dialog.accept()
