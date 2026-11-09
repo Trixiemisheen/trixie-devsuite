@@ -6,7 +6,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Python-3.14%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.14 or newer">
-  <img src="https://img.shields.io/badge/PyQt5-desktop%20UI-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="PyQt5">
+  <img src="https://img.shields.io/badge/PySide6-desktop%20UI-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="PySide6">
   <img src="https://img.shields.io/badge/uv-powered-DE5FE9?style=for-the-badge" alt="uv powered">
   <img src="https://img.shields.io/badge/Platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
 </p>
@@ -20,7 +20,7 @@
 
 </div>
 
-> **Trixie DevSuite** is an offline-first PyQt5 desktop workspace for Python
+> **Trixie DevSuite** is an offline-first PySide6 desktop workspace for Python
 > developers. It combines project creation, environment discovery, package
 > recommendations, Git shortcuts, health checks, and an in-app manual in one
 > focused dashboard.
@@ -29,7 +29,7 @@
 
 | Workspace | Capabilities |
 | --- | --- |
-| **Create** | Start Basic Python, CLI, PyQt, FastAPI, or data science projects |
+| **Create** | Start Basic Python, CLI, PySide6, FastAPI, or data science projects |
 | **Discover** | Find projects and virtual environments in configured folders |
 | **Develop** | Run projects, tests, lint checks, terminals, and VS Code |
 | **Manage** | Inspect packages, update dependencies, and upgrade `uv.lock` |
@@ -91,7 +91,7 @@
 
 - Python **3.14 or newer**
 - [`uv`](https://docs.astral.sh/uv/) on your `PATH`
-- A PyQt5-compatible desktop environment
+- A PySide6-compatible desktop environment
 
 DevSuite currently targets Windows. Terminal integration also supports common
 Linux and macOS terminal launchers where available.

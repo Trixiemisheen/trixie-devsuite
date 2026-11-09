@@ -14,17 +14,17 @@ from urllib.request import Request, urlopen
 
 import psutil
 
-from PyQt5.QtCore import (
+from PySide6.QtCore import (
     QDateTime,
     Qt,
     QSettings,
     QThread,
     QTime,
     QTimer,
-    pyqtSignal,
+    Signal,
 )
-from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import (
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
@@ -45,14 +45,13 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QPlainTextEdit,
     QProgressBar,
-    QShortcut,
     QVBoxLayout,
     QWidget,
 )
 
 CREATE_CONSOLE = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
 APP_ORG = "TrixieMisheen"
-APP_NAME = "DevSuite"
+APP_NAME = "Trixie-DevSuite"
 SEARCH_ROOTS_KEY = "project_search_roots"
 
 THEME_COLOR_MAPS = {
@@ -209,7 +208,7 @@ class NotificationManager:
         self.unread_count = 0
         self.toasts = []
 
-    def notify(self, message, level="info", title="DevSuite"):
+    def notify(self, message, level="info", title="Trixie-DevSuite"):
         level = level if level in self.LEVEL_COLORS else "info"
         item = {
             "title": title,
@@ -238,7 +237,7 @@ class NotificationManager:
             f"<b>{item['title']}</b><br>{item['message']}",
             self.window,
         )
-        toast.setTextFormat(Qt.RichText)
+        toast.setTextFormat(Qt.TextFormat.RichText)
         toast.setWordWrap(True)
         toast.setMinimumWidth(280)
         toast.setMaximumWidth(360)
@@ -297,7 +296,7 @@ class NotificationManager:
         layout.addLayout(actions)
         self.unread_count = 0
         self.update_button()
-        dialog.exec_()
+        dialog.exec()
 
     def clear(self, dialog, entries):
         self.items.clear()
@@ -411,7 +410,9 @@ class SettingsDialog(QDialog):
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         scroll_content = QWidget()
         settings_layout = QVBoxLayout(scroll_content)
         settings_layout.setSpacing(12)
@@ -545,7 +546,7 @@ class SettingsDialog(QDialog):
         settings_layout.addWidget(reset_button)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.Save | QDialogButtonBox.Cancel
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
 
         buttons.accepted.connect(self.accept)
@@ -817,7 +818,7 @@ class NewProjectDialog(QDialog):
         self.template.addItems([
             "Basic Python application",
             "Command-line tool",
-            "PyQt desktop application",
+            "PySide6 desktop application",
             "FastAPI web API",
             "Data science project",
         ])
@@ -834,10 +835,10 @@ class NewProjectDialog(QDialog):
         form_layout.addRow("Project template:", self.template)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
 
-        buttons.button(QDialogButtonBox.Ok).setText("Next: Choose Packages")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Next: Choose Packages")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
@@ -862,7 +863,7 @@ class NewProjectDialog(QDialog):
         hints = {
             "Basic Python application": "A small application with a starter main.py and test.",
             "Command-line tool": "Includes argparse-based command-line input handling.",
-            "PyQt desktop application": "Starts with a minimal PyQt5 window.",
+            "PySide6 desktop application": "Starts with a minimal PySide6 window.",
             "FastAPI web API": "Provides a small FastAPI app ready for uvicorn.",
             "Data science project": "Includes a notebook-friendly starter and test.",
         }
@@ -885,7 +886,7 @@ class NewProjectDialog(QDialog):
 
 PACKAGE_CATALOG = {
     "Desktop application": [
-        ("PyQt5", "Build desktop interfaces with windows, buttons, dialogs, and layouts.", "Recommended"),
+        ("PySide6", "Build desktop interfaces with windows, buttons, dialogs, and layouts.", "Recommended"),
         ("psutil", "Read system and process information, such as CPU and memory usage.", "Optional"),
         ("requests", "Make HTTP requests to web services.", "Optional"),
         ("Pillow", "Open, resize, and process images.", "Optional"),
@@ -961,9 +962,9 @@ PROJECT_TEMPLATES = {
         "main.py": 'import argparse\n\n\ndef main():\n    parser = argparse.ArgumentParser(description="A new command-line tool.")\n    parser.add_argument("name", nargs="?", default="world")\n    args = parser.parse_args()\n    print(f"Hello, {args.name}!")\n\n\nif __name__ == "__main__":\n    main()\n',
         "tests/test_main.py": "def test_cli_template():\n    assert True\n",
     },
-    "PyQt desktop application": {
-        "main.py": 'import sys\n\nfrom PyQt5.QtWidgets import QApplication, QLabel\n\n\ndef main():\n    app = QApplication(sys.argv)\n    window = QLabel("Your PyQt application starts here.")\n    window.setWindowTitle("New PyQt Project")\n    window.resize(420, 120)\n    window.show()\n    sys.exit(app.exec_())\n\n\nif __name__ == "__main__":\n    main()\n',
-        "tests/test_main.py": "def test_pyqt_template():\n    assert True\n",
+    "PySide6 desktop application": {
+        "main.py": 'import sys\n\nfrom PySide6.QtWidgets import QApplication, QLabel\n\n\ndef main():\n    app = QApplication(sys.argv)\n    window = QLabel("Your PySide6 application starts here.")\n    window.setWindowTitle("New PySide6 Project")\n    window.resize(420, 120)\n    window.show()\n    sys.exit(app.exec())\n\n\nif __name__ == "__main__":\n    main()\n',
+        "tests/test_main.py": "def test_pyside6_template():\n    assert True\n",
     },
     "FastAPI web API": {
         "main.py": 'from fastapi import FastAPI\n\napp = FastAPI(title="New API")\n\n\n@app.get("/")\ndef read_root():\n    return {"message": "Hello from your new API"}\n',
@@ -1018,7 +1019,7 @@ HELP_TOPICS = {
     "About & Owner": (
         "About Trixie DevSuite\n\n"
         "Trixie DevSuite is an offline-first Python workspace built with "
-        "Python and PyQt5. Package recommendations are rule-based and do not "
+        "Python and PySide6. Package recommendations are rule-based and do not "
         "send your project idea to an online service.\n\n"
         "Created by Trixie Misheen\n"
         "Use the buttons below to visit the official social and project links.\n\n"
@@ -1091,7 +1092,7 @@ class SearchResultsParser(HTMLParser):
 
 
 class WebSearchWorker(QThread):
-    completed = pyqtSignal(object)
+    completed = Signal(object)
 
     def __init__(self, query):
         super().__init__()
@@ -1116,7 +1117,7 @@ class WebSearchWorker(QThread):
 
 
 class ConnectivityWorker(QThread):
-    completed = pyqtSignal(object)
+    completed = Signal(object)
 
     def run(self):
         started = time.perf_counter()
@@ -1138,7 +1139,7 @@ class ConnectivityWorker(QThread):
 
 
 class DiagnosticsWorker(QThread):
-    completed = pyqtSignal(object)
+    completed = Signal(object)
 
     def __init__(self, project=None):
         super().__init__()
@@ -1172,8 +1173,8 @@ class DiagnosticsWorker(QThread):
 
 
 class SyncWorker(QThread):
-    output = pyqtSignal(str)
-    completed = pyqtSignal(int)
+    output = Signal(str)
+    completed = Signal(int)
 
     def __init__(self, project):
         super().__init__()
@@ -1290,12 +1291,12 @@ class PackageAdvisorDialog(QDialog):
         note.setStyleSheet("color: #8B949E; font-size: 11px;")
         layout.addWidget(note)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         self.skip_button = buttons.addButton(
-            "Skip — No Packages", QDialogButtonBox.ActionRole
+            "Skip — No Packages", QDialogButtonBox.ButtonRole.ActionRole
         )
         self.continue_button = buttons.addButton(
-            "Create Project", QDialogButtonBox.AcceptRole
+            "Create Project", QDialogButtonBox.ButtonRole.AcceptRole
         )
         self.continue_button.setObjectName("primary")
         buttons.rejected.connect(self.reject)
@@ -1366,9 +1367,9 @@ class PackageAdvisorDialog(QDialog):
 
 class ProjectSetupWorker(QThread):
     """Run project setup off the UI thread and stream command output."""
-    progress = pyqtSignal(str)
-    log_line = pyqtSignal(str)
-    completed = pyqtSignal(object)
+    progress = Signal(str)
+    log_line = Signal(str)
+    completed = Signal(object)
 
     def __init__(
         self, uv_executable, project_directory, project_name, packages,
@@ -2216,7 +2217,7 @@ class DevSuiteWindow(QMainWindow):
 
         self.content_layout.addStretch()
 
-        footer = QLabel("TRIXIE MISHEEN™  •  BUILT WITH PYTHON & PyQt5")
+        footer = QLabel("TRIXIE MISHEEN™  •  BUILT WITH PySide6")
         footer.setStyleSheet(
             "color: #697586; font-size: 11px; padding: 8px;"
         )
@@ -2226,7 +2227,9 @@ class DevSuiteWindow(QMainWindow):
         self.dashboard_scroll = QScrollArea()
         self.dashboard_scroll.setWidgetResizable(True)
         self.dashboard_scroll.setFrameShape(QFrame.NoFrame)
-        self.dashboard_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.dashboard_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self.dashboard_scroll.setWidget(content)
         self.pages.addWidget(self.dashboard_scroll)
         self.projects_page = self.build_projects_page()
@@ -2320,7 +2323,7 @@ class DevSuiteWindow(QMainWindow):
             project_list.addItem(item)
         if not paths:
             empty = QListWidgetItem("No projects yet")
-            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
+            empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             project_list.addItem(empty)
         project_list.itemDoubleClicked.connect(self.open_shortlist_project)
         layout.addWidget(project_list)
@@ -2339,7 +2342,7 @@ class DevSuiteWindow(QMainWindow):
                 widget.project_list.addItem(item)
             if not paths:
                 empty = QListWidgetItem("No projects yet")
-                empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
+                empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
                 widget.project_list.addItem(empty)
         self.update_focus_launchpad()
 
@@ -2749,7 +2752,7 @@ class DevSuiteWindow(QMainWindow):
         layout.addWidget(self.support_detail)
 
         footer = QLabel(
-            "TRIXIE DEVSUITE  •  Built with Python & PyQt5  •  Local-first developer tooling"
+            "TRIXIE DEVSUITE  •  Built with Python & PySide6  •  Local-first developer tooling"
         )
         footer.setObjectName("support_footer")
         footer.setWordWrap(True)
@@ -3227,14 +3230,14 @@ class DevSuiteWindow(QMainWindow):
             empty = QListWidgetItem(
                 "Developer! No projects found yet. Create one with + New Project."
             )
-            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
+            empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self.projects_list.addItem(empty)
 
         if not environment_count:
             empty = QListWidgetItem(
                 "No .venv or venv environments found in discovered projects."
             )
-            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
+            empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self.environments_list.addItem(empty)
         tool_paths = {
             "uv": shutil.which("uv"),
@@ -3579,7 +3582,7 @@ class DevSuiteWindow(QMainWindow):
         close_button = QPushButton("Close")
         close_button.clicked.connect(dialog.accept)
         layout.addWidget(close_button)
-        dialog.exec_()
+        dialog.exec()
 
     def test_selected_project(self):
         project = self.selected_project_path(self.projects_list)
@@ -3728,7 +3731,7 @@ class DevSuiteWindow(QMainWindow):
             )
         )
         refresh_installed()
-        dialog.exec_()
+        dialog.exec()
 
     def open_git_workspace(self):
         project = self.selected_project_path(self.projects_list)
@@ -3837,7 +3840,7 @@ class DevSuiteWindow(QMainWindow):
         history_button.clicked.connect(show_history)
         commit_button.clicked.connect(commit_changes)
         refresh_status()
-        dialog.exec_()
+        dialog.exec()
 
     def inspect_selected_environment(self):
         project = self.selected_project_path(self.environments_list)
@@ -3879,7 +3882,7 @@ class DevSuiteWindow(QMainWindow):
             close_button = QPushButton("Close")
             close_button.clicked.connect(dialog.accept)
             layout.addWidget(close_button)
-            dialog.exec_()
+            dialog.exec()
         except (OSError, subprocess.TimeoutExpired) as error:
             QMessageBox.warning(self, "Package inspection failed", str(error))
 
@@ -4076,12 +4079,12 @@ class DevSuiteWindow(QMainWindow):
         close_button = QPushButton("Close")
         close_button.clicked.connect(dialog.accept)
         layout.addWidget(close_button)
-        dialog.exec_()
+        dialog.exec()
 
     def open_settings(self):
         dialog = SettingsDialog(self)
 
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             (
                 self.interface_density,
                 self.color_theme,
@@ -4140,7 +4143,7 @@ class DevSuiteWindow(QMainWindow):
         """Two-step wizard: details → package advisor → confirm → create."""
         # ---- Step 1: project details ----
         dialog = NewProjectDialog(self)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         project_name, project_location, python_version, template_name = (
@@ -4203,7 +4206,7 @@ class DevSuiteWindow(QMainWindow):
 
         # ---- Step 2: package advisor (skippable) ----
         advisor = PackageAdvisorDialog(self)
-        if advisor.exec_() == QDialog.Accepted:
+        if advisor.exec() == QDialog.DialogCode.Accepted:
             self.recommended_packages = advisor.selected_packages()
         else:
             # Cancelled the wizard outright — stop without creating anything.
@@ -4227,11 +4230,11 @@ class DevSuiteWindow(QMainWindow):
                 f"\n• Install: {', '.join(selected_packages)}"
                 if selected_packages else ""
             ),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
         )
 
-        if confirmation != QMessageBox.Yes:
+        if confirmation != QMessageBox.StandardButton.Yes:
             return
 
         progress_dialog = ProjectSetupProgressDialog(project_name, self)
@@ -4312,7 +4315,7 @@ class DevSuiteWindow(QMainWindow):
             )
         )
         worker.start()
-        progress_dialog.exec_()
+        progress_dialog.exec()
 
 
 def main():
@@ -4321,7 +4324,7 @@ def main():
     window = DevSuiteWindow()
     window.show()
 
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
