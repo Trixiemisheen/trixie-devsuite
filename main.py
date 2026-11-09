@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -1608,11 +1609,15 @@ class DevSuiteWindow(QMainWindow):
                 font-family: Segoe UI;
             }
 
+            QLabel {
+                background-color: transparent;
+            }
+
             QLabel#brand {
                 color: #00E5FF;
-                font-size: 20px;
+                font-size: 16px;
                 font-weight: bold;
-                padding: 8px 4px;
+                padding: 2px 4px;
                 min-width: 0;
             }
 
@@ -2027,8 +2032,9 @@ class DevSuiteWindow(QMainWindow):
         )
         sidebar_header.addWidget(self.notification_button)
 
-        brand = QLabel("TRIXIE DEVSUITE™")
+        brand = QLabel("TRIXIE\nDEVSUITE™")
         brand.setObjectName("brand")
+        brand.setWordWrap(True)
         sidebar_header.addWidget(brand, 1)
         sidebar_layout.addLayout(sidebar_header)
 
@@ -2082,14 +2088,14 @@ class DevSuiteWindow(QMainWindow):
         content = QWidget()
 
         self.content_layout = QVBoxLayout(content)
-        self.content_layout.setContentsMargins(32, 28, 32, 28)
-        self.content_layout.setSpacing(20)
+        self.content_layout.setContentsMargins(20, 16, 20, 16)
+        self.content_layout.setSpacing(12)
 
         hero = QFrame()
         hero.setObjectName("dashboard_hero")
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(22, 18, 22, 18)
-        hero_layout.setSpacing(6)
+        hero_layout.setContentsMargins(16, 12, 16, 12)
+        hero_layout.setSpacing(4)
 
         kicker = QLabel("TRIXIE DEVSUITE  /  WORKSPACE OVERVIEW")
         kicker.setObjectName("dashboard_kicker")
@@ -2121,7 +2127,7 @@ class DevSuiteWindow(QMainWindow):
         self.content_layout.addWidget(stats_heading)
 
         stats_layout = QHBoxLayout()
-        stats_layout.setSpacing(16)
+        stats_layout.setSpacing(10)
 
         self.total_projects_card = self.create_card("TOTAL PROJECTS", "0")
         self.environments_card = self.create_card("ENVIRONMENTS", "0")
@@ -2143,7 +2149,7 @@ class DevSuiteWindow(QMainWindow):
         self.content_layout.addWidget(actions_heading)
 
         actions_layout = QHBoxLayout()
-        actions_layout.setSpacing(10)
+        actions_layout.setSpacing(8)
         folder_button = QPushButton("▣  Open Project Root")
         folder_button.clicked.connect(self.open_project_root)
         actions_layout.addWidget(folder_button)
@@ -2161,7 +2167,7 @@ class DevSuiteWindow(QMainWindow):
         snapshot_card = QFrame()
         snapshot_card.setObjectName("card")
         snapshot_layout = QVBoxLayout(snapshot_card)
-        snapshot_layout.setContentsMargins(14, 10, 14, 10)
+        snapshot_layout.setContentsMargins(10, 7, 10, 7)
         snapshot_title = QLabel("WORKSPACE NOTE")
         snapshot_title.setObjectName("card_title")
         snapshot_layout.addWidget(snapshot_title)
@@ -2187,8 +2193,8 @@ class DevSuiteWindow(QMainWindow):
         launchpad = QFrame()
         launchpad.setObjectName("focus_launchpad")
         launchpad_layout = QVBoxLayout(launchpad)
-        launchpad_layout.setContentsMargins(16, 13, 16, 13)
-        launchpad_layout.setSpacing(6)
+        launchpad_layout.setContentsMargins(12, 9, 12, 9)
+        launchpad_layout.setSpacing(4)
         launchpad_kicker = QLabel("FOCUS LAUNCHPAD")
         launchpad_kicker.setObjectName("focus_kicker")
         launchpad_layout.addWidget(launchpad_kicker)
@@ -2237,11 +2243,11 @@ class DevSuiteWindow(QMainWindow):
         self.help_page = self.build_help_page()
         self.troubleshooting_page = self.build_troubleshooting_page()
         self.support_page = self.build_support_page()
-        self.pages.addWidget(self.projects_page)
-        self.pages.addWidget(self.environments_page)
-        self.pages.addWidget(self.help_page)
-        self.pages.addWidget(self.troubleshooting_page)
-        self.pages.addWidget(self.support_page)
+        self.pages.addWidget(self.scroll_page(self.projects_page))
+        self.pages.addWidget(self.scroll_page(self.environments_page))
+        self.pages.addWidget(self.scroll_page(self.help_page))
+        self.pages.addWidget(self.scroll_page(self.troubleshooting_page))
+        self.pages.addWidget(self.scroll_page(self.support_page))
         self.root_layout.addWidget(self.pages, 1)
         self.apply_sidebar_state()
 
@@ -2301,6 +2307,17 @@ class DevSuiteWindow(QMainWindow):
     def save_project_paths(self):
         self.settings.setValue("favorite_projects", self.favorite_projects)
         self.settings.setValue("recent_projects", self.recent_projects)
+
+    @staticmethod
+    def scroll_page(page):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        scroll.setWidget(page)
+        return scroll
 
     def build_project_shortlist(self, title, paths):
         container = QFrame()
@@ -2425,7 +2442,7 @@ class DevSuiteWindow(QMainWindow):
     def build_projects_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(16)
 
         heading = QLabel("My Projects")
@@ -2482,48 +2499,50 @@ class DevSuiteWindow(QMainWindow):
         self.project_details.setWordWrap(True)
         layout.addWidget(self.project_details)
 
-        actions = QHBoxLayout()
+        actions = QGridLayout()
+        actions.setHorizontalSpacing(10)
+        actions.setVerticalSpacing(10)
         refresh_button = QPushButton("↻  Refresh")
         refresh_button.clicked.connect(self.refresh_workspace_views)
-        actions.addWidget(refresh_button)
+        actions.addWidget(refresh_button, 0, 0)
 
         open_folder_button = QPushButton("Open Folder")
         open_folder_button.clicked.connect(self.open_selected_project_folder)
-        actions.addWidget(open_folder_button)
+        actions.addWidget(open_folder_button, 0, 1)
 
         open_editor_button = QPushButton("Open in VS Code")
         open_editor_button.clicked.connect(self.open_selected_project_in_editor)
-        actions.addWidget(open_editor_button)
+        actions.addWidget(open_editor_button, 0, 2)
 
         terminal_button = QPushButton(">_  Project Terminal")
         terminal_button.clicked.connect(self.open_selected_project_terminal)
-        actions.addWidget(terminal_button)
+        actions.addWidget(terminal_button, 1, 0)
 
         run_button = QPushButton("▶  Run main.py")
         run_button.clicked.connect(self.run_selected_project)
-        actions.addWidget(run_button)
+        actions.addWidget(run_button, 1, 1)
         test_button = QPushButton("✓  Run Tests")
         test_button.clicked.connect(self.test_selected_project)
-        actions.addWidget(test_button)
+        actions.addWidget(test_button, 1, 2)
         lint_button = QPushButton("✓  Run Lint")
         lint_button.clicked.connect(self.lint_selected_project)
-        actions.addWidget(lint_button)
+        actions.addWidget(lint_button, 2, 0)
         dependencies_button = QPushButton("📦  Dependencies")
         dependencies_button.clicked.connect(self.manage_selected_dependencies)
-        actions.addWidget(dependencies_button)
+        actions.addWidget(dependencies_button, 2, 1)
         git_button = QPushButton(" Git  Git Workspace")
         git_button.clicked.connect(self.open_git_workspace)
-        actions.addWidget(git_button)
+        actions.addWidget(git_button, 2, 2)
         pin_button = QPushButton("☆  Pin / Unpin")
         pin_button.clicked.connect(self.toggle_selected_favorite)
-        actions.addWidget(pin_button)
+        actions.addWidget(pin_button, 3, 0)
         layout.addLayout(actions)
         return page
 
     def build_environments_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(16)
 
         heading = QLabel("Python Environments")
@@ -2572,7 +2591,7 @@ class DevSuiteWindow(QMainWindow):
     def build_help_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(14)
 
         hero = QFrame()
@@ -2676,7 +2695,7 @@ class DevSuiteWindow(QMainWindow):
     def build_support_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(16)
 
         hero = QFrame()
@@ -2828,7 +2847,7 @@ class DevSuiteWindow(QMainWindow):
     def build_troubleshooting_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(14)
 
         heading = QLabel("Troubleshooting & Activity")
@@ -3897,10 +3916,10 @@ class DevSuiteWindow(QMainWindow):
     def create_card(title, value):
         card = QFrame()
         card.setObjectName("card")
-        card.setMinimumHeight(110)
+        card.setMinimumHeight(86)
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setContentsMargins(12, 8, 12, 8)
 
         title_label = QLabel(title)
         title_label.setObjectName("card_title")
@@ -3947,11 +3966,12 @@ class DevSuiteWindow(QMainWindow):
 
     def update_responsive_layout(self):
         width = self.width()
+        short_window = self.height() < 800
 
-        if self.interface_density == "Compact":
+        if self.interface_density == "Compact" or short_window:
             horizontal_padding = 18 if width < 1200 else 24
-            vertical_padding = 16
-            spacing = 12
+            vertical_padding = 10
+            spacing = 8
         else:
             horizontal_padding = 22 if width < 1200 else 32
             vertical_padding = 20 if width < 1200 else 28
