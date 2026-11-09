@@ -1643,6 +1643,13 @@ class DevSuiteWindow(QMainWindow):
                 color: #00E5FF;
             }
 
+            QPushButton#sidebar_nav:checked {
+                background-color: #164653;
+                color: #FFFFFF;
+                border-left: 3px solid #00E5FF;
+                padding-left: 9px;
+            }
+
             QFrame#sidebar {
                 background-color: #11141C;
                 border-right: 1px solid #2A3040;
@@ -1988,8 +1995,14 @@ class DevSuiteWindow(QMainWindow):
             self.status_online_label,
             self.status_refresh_label,
         ):
-            label.setStyleSheet("padding: 0 8px; color: #8B949E;")
+            label.setStyleSheet("padding: 0 4px; color: #8B949E;")
             self.statusBar().addPermanentWidget(label)
+        self.status_optional_labels = (
+            self.status_datetime_label,
+            self.status_usage_label,
+            self.status_online_label,
+            self.status_refresh_label,
+        )
 
         self.status_clock_timer = QTimer(self)
         self.status_clock_timer.timeout.connect(self.update_status_clock)
@@ -2339,7 +2352,9 @@ class DevSuiteWindow(QMainWindow):
             item.setData(256, path)
             project_list.addItem(item)
         if not paths:
-            empty = QListWidgetItem("No projects yet")
+            empty = QListWidgetItem(
+                "No projects yet — open My Projects to add one."
+            )
             empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             project_list.addItem(empty)
         project_list.itemDoubleClicked.connect(self.open_shortlist_project)
@@ -2358,7 +2373,9 @@ class DevSuiteWindow(QMainWindow):
                 item.setData(256, path)
                 widget.project_list.addItem(item)
             if not paths:
-                empty = QListWidgetItem("No projects yet")
+                empty = QListWidgetItem(
+                    "No projects yet — open My Projects to add one."
+                )
                 empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
                 widget.project_list.addItem(empty)
         self.update_focus_launchpad()
@@ -3308,24 +3325,28 @@ class DevSuiteWindow(QMainWindow):
     def show_dashboard(self):
         self.record_activity("Opened Dashboard")
         self.pages.setCurrentIndex(0)
+        self.set_active_nav(self.sidebar_nav_buttons[0])
         self.status_page_label.setText("Page: Dashboard")
         self.refresh_workspace_views()
 
     def show_projects(self):
         self.record_activity("Opened My Projects")
         self.pages.setCurrentIndex(1)
+        self.set_active_nav(self.sidebar_nav_buttons[2])
         self.status_page_label.setText("Page: My Projects")
         self.refresh_workspace_views()
 
     def show_environments(self):
         self.record_activity("Opened Environments")
         self.pages.setCurrentIndex(2)
+        self.set_active_nav(self.sidebar_nav_buttons[3])
         self.status_page_label.setText("Page: Environments")
         self.refresh_workspace_views()
 
     def show_troubleshooting(self):
         self.status_page_label.setText("Page: Troubleshooting")
-        self.pages.setCurrentWidget(self.troubleshooting_page)
+        self.set_active_nav(self.sidebar_nav_buttons[5])
+        self.pages.setCurrentIndex(4)
         selected = self.projects_list.currentItem()
         project = selected.data(256) if selected else None
         self.diagnostics_project_label.setText(
@@ -3335,13 +3356,15 @@ class DevSuiteWindow(QMainWindow):
 
     def show_support(self):
         self.status_page_label.setText("Page: Support")
-        self.pages.setCurrentWidget(self.support_page)
+        self.set_active_nav(self.sidebar_nav_buttons[6])
+        self.pages.setCurrentIndex(5)
         self.show_support_section("home")
         self.record_activity("Opened Support")
 
     def show_help(self, topic="Welcome"):
         self.record_activity(f"Opened Help: {topic}")
         self.pages.setCurrentIndex(3)
+        self.set_active_nav(self.sidebar_nav_buttons[4])
         self.status_page_label.setText("Page: Help")
         for index in range(self.help_topics_list.count()):
             item = self.help_topics_list.item(index)
@@ -3349,6 +3372,10 @@ class DevSuiteWindow(QMainWindow):
                 self.help_topics_list.setCurrentItem(item)
                 return
         self.help_topics_list.setCurrentRow(0)
+
+    def set_active_nav(self, active_button):
+        for button in self.sidebar_nav_buttons:
+            button.setChecked(button is active_button)
 
     def update_project_details(self, item):
         if item is None or not item.data(256):
@@ -3908,6 +3935,8 @@ class DevSuiteWindow(QMainWindow):
     @staticmethod
     def add_nav_button(layout, text):
         button = QPushButton(text)
+        button.setObjectName("sidebar_nav")
+        button.setCheckable(True)
         button.setMinimumHeight(42)
         layout.addWidget(button)
         return button
@@ -3984,6 +4013,9 @@ class DevSuiteWindow(QMainWindow):
         self.content_layout.setSpacing(spacing)
 
         self.apply_sidebar_state()
+        show_optional_status = width >= 1400
+        for label in self.status_optional_labels:
+            label.setVisible(show_optional_status)
 
     def apply_sidebar_state(self, force_width=False):
         """Apply the persisted sidebar width/collapsed state."""
