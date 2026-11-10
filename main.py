@@ -2458,7 +2458,7 @@ class DevSuiteWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.dashboard_scroll = QScrollArea()
         self.dashboard_scroll.setWidgetResizable(True)
-        self.dashboard_scroll.setFrameShape(QFrame.NoFrame)
+        self.dashboard_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.dashboard_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
@@ -2538,7 +2538,7 @@ class DevSuiteWindow(QMainWindow):
     def scroll_page(page):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
@@ -2866,7 +2866,9 @@ class DevSuiteWindow(QMainWindow):
         self.help_article = QPlainTextEdit()
         self.help_article.setObjectName("help_article")
         self.help_article.setReadOnly(True)
-        self.help_article.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.help_article.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.WidgetWidth
+        )
         content_layout.addWidget(self.help_topics_list)
         self.help_content_stack = QStackedWidget()
         self.help_content_stack.addWidget(self.help_article)
@@ -3159,7 +3161,9 @@ class DevSuiteWindow(QMainWindow):
             "format": "trixie-devsuite-runtime-snapshot",
             "app_version": APP_VERSION,
             "python": sys.version,
-            "qt_platform": app.platformName() if app else None,
+            "qt_platform": (
+                app.platformName() if isinstance(app, QApplication) else None
+            ),
             "developer_mode": self.developer_mode_enabled,
             "active_threads": [
                 type(child).__name__
@@ -3182,10 +3186,14 @@ class DevSuiteWindow(QMainWindow):
         )
 
     def copy_runtime_context(self):
+        app = QApplication.instance()
+        platform_name = (
+            app.platformName() if isinstance(app, QApplication) else "unknown"
+        )
         context = (
             f"Trixie DevSuite {APP_VERSION}\n"
             f"Python: {sys.version.split()[0]}\n"
-            f"Qt platform: {QApplication.instance().platformName()}\n"
+            f"Qt platform: {platform_name}\n"
             f"Developer Mode: {self.developer_mode_enabled}\n\n"
             f"Diagnostics:\n{self.diagnostics_results.toPlainText()}\n\n"
             "Recent activity:\n"
@@ -3531,7 +3539,7 @@ class DevSuiteWindow(QMainWindow):
         if not result.get("success"):
             query = self.help_search_input.text().strip()
             self.open_external_help_search(query)
-            self.help_article.append(
+            self.help_article.appendPlainText(
                 "\nIn-app search error:\n"
                 f"{result.get('error', 'Unknown network error')}"
             )
@@ -4644,18 +4652,24 @@ class DevSuiteWindow(QMainWindow):
             "Expand sidebar" if self.sidebar_collapsed else "Collapse sidebar"
         )
         self.sidebar_version_label.setVisible(not self.sidebar_collapsed)
-        self.sidebar.findChild(QLabel, "brand").setVisible(not self.sidebar_collapsed)
-        self.sidebar.findChild(QLabel, "section").setVisible(not self.sidebar_collapsed)
+        brand = self.sidebar.findChild(QLabel, "brand")
+        section = self.sidebar.findChild(QLabel, "section")
+        if brand is not None:
+            brand.setVisible(not self.sidebar_collapsed)
+        if section is not None:
+            section.setVisible(not self.sidebar_collapsed)
         for button in self.sidebar_nav_buttons:
             full_text = button.property("sidebar_full_text") or button.text()
             button.setProperty("sidebar_full_text", full_text)
             button.setText(full_text.split()[0] if self.sidebar_collapsed else full_text)
             button.setToolTip(full_text if self.sidebar_collapsed else "")
 
-        style_hints = QApplication.instance().styleHints()
+        app = QApplication.instance()
+        style_hints = app.styleHints() if isinstance(app, QApplication) else None
         reduce_motion = (
             style_hints.reduceMotion()
-            if hasattr(style_hints, "reduceMotion") else False
+            if style_hints is not None and hasattr(style_hints, "reduceMotion")
+            else False
         )
         should_animate = animate and not force_width and not reduce_motion
         if should_animate:
