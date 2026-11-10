@@ -46,4 +46,10 @@ jobs:
             --exclude=.git,.venv,venv,build,dist
 
       - name: Run tests
-        run: python -m pytest -q
+        run: |
+          python -m pytest -q || status=$?
+          if [ "${status:-0}" -eq 5 ]; then
+            echo "No tests were collected; treating as success."
+            exit 0
+          fi
+          exit "${status:-0}"
