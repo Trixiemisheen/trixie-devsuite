@@ -26,6 +26,7 @@ from PySide6.QtCore import (
     QParallelAnimationGroup,
     QPoint,
     QPropertyAnimation,
+    QMargins,
     Qt,
     QSettings,
     QThread,
@@ -3606,6 +3607,7 @@ class DevSuiteWindow(QMainWindow):
         self.status_usage_label.setToolTip(
             "Current system resource usage. Updated every 2 seconds."
         )
+        self.append_usage_chart_sample(cpu_percent, memory_percent)
 
     def check_connectivity(self):
         worker = getattr(self, "connectivity_worker", None)
@@ -4468,6 +4470,87 @@ class DevSuiteWindow(QMainWindow):
         layout.addWidget(button)
         return button
 
+    def build_usage_chart_card(self):
+        """Build a compact live CPU/RAM history chart for the dashboard."""
+        card = QFrame()
+        card.setObjectName("card")
+        card.setMinimumHeight(180)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(12, 8, 12, 8)
+
+        title = QLabel("SYSTEM USAGE  /  LIVE")
+        title.setObjectName("card_title")
+        layout.addWidget(title)
+
+        self.cpu_series = QLineSeries()
+        self.ram_series = QLineSeries()
+        self.cpu_series.setName("CPU %")
+        self.ram_series.setName("RAM %")
+
+        chart = QChart()
+        chart.addSeries(self.cpu_series)
+        chart.addSeries(self.ram_series)
+        chart.setBackgroundVisible(False)
+        chart.setPlotAreaBackgroundVisible(False)
+        chart.setMargins(QMargins(0, 0, 0, 0))
+        chart.legend().setVisible(True)
+        chart.legend().setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self.usage_axis_x = QValueAxis()
+        self.usage_axis_x.setRange(0, 59)
+        self.usage_axis_x.setLabelsVisible(False)
+        self.usage_axis_y = QValueAxis()
+        self.usage_axis_y.setRange(0, 100)
+        self.usage_axis_y.setLabelFormat("%d")
+        self.usage_axis_y.setLabelsVisible(False)
+        chart.addAxis(self.usage_axis_x, Qt.AlignmentFlag.AlignBottom)
+        chart.addAxis(self.usage_axis_y, Qt.AlignmentFlag.AlignLeft)
+        self.cpu_series.attachAxis(self.usage_axis_x)
+        self.cpu_series.attachAxis(self.usage_axis_y)
+        self.ram_series.attachAxis(self.usage_axis_x)
+        self.ram_series.attachAxis(self.usage_axis_y)
+
+        self.usage_chart = chart
+        self.usage_chart_view = QChartView(chart)
+        self.usage_chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.usage_chart_view.setMinimumHeight(130)
+        self.usage_chart_view.setStyleSheet(
+            "background: transparent; border: none;"
+        )
+        layout.addWidget(self.usage_chart_view, 1)
+        self.update_usage_chart_theme()
+        return card
+
+    def update_usage_chart_theme(self):
+        if not hasattr(self, "cpu_series"):
+            return
+        colors = THEME_COLOR_MAPS.get(self.color_theme, {})
+        cpu_color = QColor(colors.get("#00E5FF", "#00E5FF"))
+        ram_color = QColor(colors.get("#68FF8A", "#68FF8A"))
+        self.cpu_series.setColor(cpu_color)
+        self.ram_series.setColor(ram_color)
+        cpu_pen = QPen(cpu_color)
+        cpu_pen.setWidth(2)
+        ram_pen = QPen(ram_color)
+        ram_pen.setWidth(2)
+        self.cpu_series.setPen(cpu_pen)
+        self.ram_series.setPen(ram_pen)
+
+    def append_usage_chart_sample(self, cpu_percent, memory_percent):
+        if not hasattr(self, "cpu_series"):
+            return
+        sample = self.cpu_series.count()
+        self.cpu_series.append(sample, cpu_percent)
+        self.ram_series.append(sample, memory_percent)
+        max_points = 60
+        if self.cpu_series.count() > max_points:
+            self.cpu_series.remove(0)
+            self.ram_series.remove(0)
+            first_x = self.cpu_series.at(0).x()
+            last_x = self.cpu_series.at(self.cpu_series.count() - 1).x()
+            self.usage_axis_x.setRange(first_x, max(last_x, first_x + 1))
+
     @staticmethod
     def create_card(title, value):
         card = QFrame()
@@ -4740,6 +4823,7 @@ class DevSuiteWindow(QMainWindow):
             )
             self.update_responsive_layout()
             self.apply_sidebar_state(force_width=True)
+            self.update_usage_chart_theme()
             self.refresh_workspace_views()
             self.record_activity("Saved application settings")
             self.notifications.notify(
