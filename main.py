@@ -53,6 +53,7 @@ from PySide6.QtWidgets import (
 CREATE_CONSOLE = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
 APP_ORG = "TrixieMisheen"
 APP_NAME = "Trixie-DevSuite"
+APP_VERSION = "1.0.2"
 SEARCH_ROOTS_KEY = "project_search_roots"
 
 THEME_COLOR_MAPS = {
@@ -193,6 +194,10 @@ def apply_theme_stylesheet(stylesheet, theme_name):
     return pattern.sub(lambda match: replacements[match.group()], stylesheet)
 
 
+def normalize_root(path):
+    return str(Path(path).expanduser().resolve())
+
+
 class NotificationManager:
     """Show lightweight in-app notifications and keep a small history."""
 
@@ -252,7 +257,10 @@ class NotificationManager:
         self.toasts.append(toast)
         self.reposition_toasts()
         toast.show()
-        QTimer.singleShot(4500, lambda: self.dismiss_toast(toast))
+        timer = QTimer(toast)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self.dismiss_toast(toast))
+        timer.start(4500)
 
     def dismiss_toast(self, toast):
         if toast in self.toasts:
@@ -568,7 +576,7 @@ class SettingsDialog(QDialog):
             folder = folder.strip() if folder else ""
         if not folder:
             return
-        path = str(Path(folder).expanduser().resolve())
+        path = normalize_root(folder)
         existing = {
             self.folders_list.item(i).text()
             for i in range(self.folders_list.count())
@@ -713,7 +721,7 @@ class SettingsDialog(QDialog):
         self.refresh_interval_combo.setCurrentText(f"{interval} seconds")
         self.folders_list.clear()
         for root in roots:
-            normalized = str(Path(root).expanduser())
+            normalized = normalize_root(root)
             if normalized not in {
                 self.folders_list.item(index).text()
                 for index in range(self.folders_list.count())
@@ -1024,7 +1032,7 @@ HELP_TOPICS = {
         "send your project idea to an online service.\n\n"
         "Created by Trixie Misheen\n"
         "Use the buttons below to visit the official social and project links.\n\n"
-        "Version: 1.0.2"
+        f"Version: {APP_VERSION}"
     ),
 }
 
@@ -1106,7 +1114,7 @@ class WebSearchWorker(QThread):
             )
             request = Request(
                 url,
-                headers={"User-Agent": "TrixieDevSuite/1.0.2"},
+                headers={"User-Agent": f"TrixieDevSuite/{APP_VERSION}"},
             )
             with urlopen(request, timeout=12) as response:
                 html = response.read().decode("utf-8", errors="replace")
@@ -1126,7 +1134,7 @@ class ConnectivityWorker(QThread):
             request = Request(
                 "https://connectivitycheck.gstatic.com/generate_204",
                 method="HEAD",
-                headers={"User-Agent": "TrixieDevSuite/1.0.2"},
+                headers={"User-Agent": f"TrixieDevSuite/{APP_VERSION}"},
             )
             with urlopen(request, timeout=5):
                 pass
@@ -1137,6 +1145,104 @@ class ConnectivityWorker(QThread):
                 "online": True,
                 "latency_ms": round((time.perf_counter() - started) * 1000),
             })
+
+
+def discover_project_paths(search_roots):
+    projects = {}
+    for root_text in search_roots:
+        root = Path(root_text).expanduser()
+        try:
+            if not root.is_dir():
+                continue
+            candidates = [root]
+            candidates.extend(
+                child for child in root.iterdir()
+                if child.is_dir() and child.name not in {
+                    ".git", ".venv", "venv", "__pycache__", "node_modules"
+                }
+            )
+            for candidate in candidates:
+                try:
+                    if (candidate / "pyproject.toml").is_file():
+                        resolved = candidate.resolve()
+                        projects[str(resolved).casefold()] = resolved
+                except OSError:
+                    continue
+        except OSError:
+            continue
+    return sorted(projects.values(), key=lambda path: path.name.casefold())
+
+
+def find_environment_python(project):
+    for folder_name in (".venv", "venv"):
+        scripts = "Scripts" if os.name == "nt" else "bin"
+        executable = "python.exe" if os.name == "nt" else "python"
+        candidate = Path(project) / folder_name / scripts / executable
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+class WorkspaceRefreshWorker(QThread):
+    """Discover projects and probe their environments without blocking Qt."""
+    completed = Signal(object)
+
+    def __init__(self, search_roots):
+        super().__init__()
+        self.search_roots = list(search_roots)
+
+    def run(self):
+        records = []
+        for project in discover_project_paths(self.search_roots):
+            python_executable = find_environment_python(project)
+            version = None
+            if python_executable:
+                try:
+                    result = subprocess.run(
+                        [str(python_executable), "--version"],
+                        capture_output=True, text=True, timeout=5, check=False,
+                    )
+                    version = (result.stdout or result.stderr).strip()
+                    if result.returncode != 0 or not version:
+                        version = "Python version unavailable"
+                except (OSError, subprocess.TimeoutExpired):
+                    version = "Python version unavailable"
+            records.append({
+                "path": str(project),
+                "python": str(python_executable) if python_executable else None,
+                "version": version,
+            })
+        self.completed.emit(records)
+
+
+class ProjectDetailsWorker(QThread):
+    """Read project metadata and Git state without blocking selection changes."""
+    completed = Signal(object)
+
+    def __init__(self, project):
+        super().__init__()
+        self.project = Path(project)
+
+    def run(self):
+        dependencies, scripts = read_project_metadata(self.project)
+        branch = git_current_branch(self.project) or "Not a Git repository"
+        changed_files = 0
+        try:
+            result = subprocess.run(
+                ["git", "status", "--short"],
+                cwd=str(self.project), capture_output=True, text=True,
+                timeout=5, check=False,
+            )
+            changed_files = len(result.stdout.splitlines())
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        self.completed.emit({
+            "project": str(self.project),
+            "dependencies": dependencies,
+            "scripts": scripts,
+            "branch": branch,
+            "changed_files": changed_files,
+        })
 
 
 class DiagnosticsWorker(QThread):
@@ -2088,7 +2194,7 @@ class DevSuiteWindow(QMainWindow):
         settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel("Trixie DevSuite • V 1.0.2")
+        version = QLabel(f"Trixie DevSuite • V {APP_VERSION}")
         self.sidebar_version_label = version
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
@@ -2298,8 +2404,8 @@ class DevSuiteWindow(QMainWindow):
         raw = self.settings.value(SEARCH_ROOTS_KEY)
         if isinstance(raw, str):
             raw = [raw]
-        roots = [str(item) for item in (raw or []) if str(item).strip()]
-        default_root = str(Path.home() / "Projects")
+        roots = [normalize_root(item) for item in (raw or []) if str(item).strip()]
+        default_root = normalize_root(Path.home() / "Projects")
         if default_root not in roots:
             roots.append(default_root)
         return roots
@@ -3166,7 +3272,32 @@ class DevSuiteWindow(QMainWindow):
         )
 
     def refresh_workspace_views(self, *_):
-        projects = self.discover_projects()
+        worker = getattr(self, "workspace_refresh_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        self.status_refresh_label.setText("Refreshing workspace...")
+        self.workspace_refresh_worker = WorkspaceRefreshWorker(
+            self.project_search_roots
+        )
+        self.workspace_refresh_worker.completed.connect(
+            self.apply_workspace_refresh
+        )
+        self.workspace_refresh_worker.finished.connect(
+            self.clear_workspace_refresh_worker
+        )
+        self.workspace_refresh_worker.start()
+
+    def clear_workspace_refresh_worker(self):
+        worker = self.workspace_refresh_worker
+        self.workspace_refresh_worker = None
+        if worker is not None:
+            worker.deleteLater()
+
+    def apply_workspace_refresh(self, records):
+        projects = [Path(record["path"]) for record in records]
+        environment_records = {
+            record["path"]: record for record in records if record["python"]
+        }
         search_text = self.project_filter_input.text().strip().casefold()
         if search_text:
             projects = [
@@ -3211,22 +3342,12 @@ class DevSuiteWindow(QMainWindow):
             item.setData(256, str(project))
             self.projects_list.addItem(item)
 
-            python_executable = self.environment_python(project)
-            if python_executable:
+            environment = environment_records.get(str(project))
+            if environment:
                 environment_count += 1
-                try:
-                    result = subprocess.run(
-                        [str(python_executable), "--version"],
-                        capture_output=True, text=True, timeout=5, check=False,
-                    )
-                    version = (result.stdout or result.stderr).strip()
-                    if result.returncode != 0 or not version:
-                        version = "Python version unavailable"
-                except (OSError, subprocess.TimeoutExpired):
-                    version = "Python version unavailable"
-
                 env_item = QListWidgetItem(
-                    f"{project.name}  •  {version}\n{python_executable}"
+                    f"{project.name}  •  {environment['version']}\n"
+                    f"{environment['python']}"
                 )
                 env_item.setData(256, str(project))
                 self.environments_list.addItem(env_item)
@@ -3237,7 +3358,7 @@ class DevSuiteWindow(QMainWindow):
         healthy_projects = sum(
             (project / "pyproject.toml").is_file()
             and (project / "main.py").is_file()
-            and self.environment_python(project) is not None
+            and str(project) in environment_records
             for project in projects
         )
         self.healthy_projects_card.value_label.setText(str(healthy_projects))
@@ -3389,21 +3510,33 @@ class DevSuiteWindow(QMainWindow):
             return
 
         project = Path(item.data(256))
-        dependencies, scripts = read_project_metadata(project)
-        branch = git_current_branch(project) or "Not a Git repository"
-        self.status_branch_label.setText(f"Branch: {branch}")
+        self.project_details.setText("Loading project details...")
         self.statusBar().showMessage(
             f"Selected project: {project.name}", 3000
         )
-        try:
-            git_status = subprocess.run(
-                ["git", "status", "--short"],
-                cwd=str(project), capture_output=True, text=True,
-                timeout=5, check=False,
-            )
-            changed_files = len(git_status.stdout.splitlines())
-        except (OSError, subprocess.TimeoutExpired):
-            changed_files = 0
+        worker = ProjectDetailsWorker(project)
+        self.project_details_worker = worker
+        worker.completed.connect(self.apply_project_details)
+        worker.finished.connect(
+            lambda worker=worker: self.clear_project_details_worker(worker)
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    def clear_project_details_worker(self, worker):
+        if getattr(self, "project_details_worker", None) is worker:
+            self.project_details_worker = None
+
+    def apply_project_details(self, result):
+        project = Path(result["project"])
+        current = self.projects_list.currentItem()
+        if current is None or current.data(256) != str(project):
+            return
+        dependencies = result["dependencies"]
+        scripts = result["scripts"]
+        branch = result["branch"]
+        changed_files = result["changed_files"]
+        self.status_branch_label.setText(f"Branch: {branch}")
 
         checks = [
             ("pyproject.toml", (project / "pyproject.toml").is_file()),
@@ -3979,6 +4112,9 @@ class DevSuiteWindow(QMainWindow):
         self.connectivity_timer.stop()
 
         setup_workers = self.findChildren(ProjectSetupWorker)
+        active_setup_worker = getattr(self, "active_setup_worker", None)
+        if active_setup_worker is not None and active_setup_worker not in setup_workers:
+            setup_workers.append(active_setup_worker)
         for worker in setup_workers:
             if worker.isRunning():
                 worker.cancel()
@@ -3987,6 +4123,8 @@ class DevSuiteWindow(QMainWindow):
             worker for worker in (
                 getattr(self, "connectivity_worker", None),
                 getattr(self, "help_search_worker", None),
+                getattr(self, "workspace_refresh_worker", None),
+                getattr(self, "project_details_worker", None),
                 *setup_workers,
             )
             if worker is not None and worker.isRunning()
@@ -4297,6 +4435,7 @@ class DevSuiteWindow(QMainWindow):
             uv_executable, project_directory, project_name,
             selected_packages, python_version, template_name,
         )
+        self.active_setup_worker = worker
         progress_dialog.worker = worker
         worker.progress.connect(progress_dialog.status_label.setText)
         worker.log_line.connect(progress_dialog.output.appendPlainText)
@@ -4369,6 +4508,8 @@ class DevSuiteWindow(QMainWindow):
                 or {"success": False, "error": "Setup worker stopped unexpectedly."}
             )
         )
+        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(lambda: setattr(self, "active_setup_worker", None))
         worker.start()
         progress_dialog.exec()
 
