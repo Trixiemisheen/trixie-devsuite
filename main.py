@@ -550,6 +550,14 @@ class SettingsDialog(QDialog):
         )
         settings_layout.addWidget(self.auto_refresh_checkbox)
 
+        self.developer_mode_checkbox = QCheckBox(
+            "Enable Developer Mode (advanced tools)"
+        )
+        self.developer_mode_checkbox.setChecked(
+            parent.developer_mode_enabled if parent else False
+        )
+        settings_layout.addWidget(self.developer_mode_checkbox)
+
         settings_layout.addWidget(QLabel("Automatic refresh interval"))
         self.refresh_interval_combo = QComboBox()
         self.refresh_interval_combo.addItems(
@@ -793,6 +801,7 @@ class SettingsDialog(QDialog):
         self.project_location_input.setText(str(Path.home() / "Projects"))
         self.python_version_combo.setCurrentText("3.13")
         self.auto_refresh_checkbox.setChecked(True)
+        self.developer_mode_checkbox.setChecked(False)
         self.refresh_interval_combo.setCurrentText("30 seconds")
         self.folders_list.clear()
         self.folders_list.addItem(str(Path.home() / "Projects"))
@@ -1739,6 +1748,15 @@ class DevSuiteWindow(QMainWindow):
         self.sidebar_collapsed = self.settings.value(
             "sidebar_collapsed", False, bool
         )
+        self.developer_mode_enabled = self.settings.value(
+            "developer_mode_enabled", False, bool
+        )
+        self._developer_unlock_clicks = 0
+        self._developer_unlock_timer = QTimer(self)
+        self._developer_unlock_timer.setSingleShot(True)
+        self._developer_unlock_timer.timeout.connect(
+            lambda: setattr(self, "_developer_unlock_clicks", 0)
+        )
         self.project_search_roots = self.load_search_roots()
         self.recommended_packages = []
         self.favorite_projects = self.load_project_paths("favorite_projects")
@@ -2058,7 +2076,8 @@ class DevSuiteWindow(QMainWindow):
                 border-radius: 14px;
             }
 
-            QLabel#support_badge {
+            QLabel#support_badge,
+            QPushButton#support_badge {
                 background-color: #00B8D4;
                 color: #10141C;
                 border-radius: 14px;
@@ -2070,6 +2089,10 @@ class DevSuiteWindow(QMainWindow):
                 max-height: 28px;
                 padding: 4px;
                 qproperty-alignment: AlignCenter;
+            }
+
+            QPushButton#support_badge:hover {
+                background-color: #00E5FF;
             }
 
             QLabel#support_brand {
@@ -2105,6 +2128,18 @@ class DevSuiteWindow(QMainWindow):
 
             QPushButton#support_link:hover {
                 color: #00E5FF;
+            }
+
+            QPushButton#danger {
+                background-color: #4A1420;
+                border: 1px solid #FF7185;
+                color: #FFB3BE;
+                font-weight: bold;
+            }
+
+            QPushButton#danger:hover {
+                background-color: #6A1B2A;
+                color: #FFFFFF;
             }
 
             QLabel#support_detail {
@@ -2901,8 +2936,12 @@ class DevSuiteWindow(QMainWindow):
         hero_layout.setSpacing(8)
 
         identity = QHBoxLayout()
-        badge = QLabel("T")
+        badge = QPushButton("T")
         badge.setObjectName("support_badge")
+        badge.setToolTip("Developer mode unlock")
+        badge.setFixedSize(38, 38)
+        badge.clicked.connect(self.handle_developer_unlock_click)
+        self.support_developer_badge = badge
         identity.addWidget(badge)
         brand = QLabel("TRIXIE DEVSUITE")
         brand.setObjectName("support_brand")
@@ -2945,7 +2984,36 @@ class DevSuiteWindow(QMainWindow):
         report_button = QPushButton("Export Support Report")
         report_button.clicked.connect(self.export_support_report)
         actions.addWidget(report_button)
+        panic_button = QPushButton("PANIC BUTTON")
+        panic_button.setObjectName("danger")
+        panic_button.setToolTip(
+            "Run diagnostics, refresh the workspace, and prepare a recovery summary."
+        )
+        panic_button.clicked.connect(self.activate_panic_mode)
+        actions.addWidget(panic_button)
         layout.addLayout(actions)
+
+        self.support_developer_panel = QFrame()
+        self.support_developer_panel.setObjectName("support_column")
+        developer_layout = QVBoxLayout(self.support_developer_panel)
+        developer_title = QLabel("DEVELOPER MODE // UNLOCKED")
+        developer_title.setObjectName("support_section")
+        developer_layout.addWidget(developer_title)
+        developer_hint = QLabel(
+            "Advanced local tools are enabled. These controls expose runtime context "
+            "and are intended for development and debugging."
+        )
+        developer_hint.setWordWrap(True)
+        developer_layout.addWidget(developer_hint)
+        developer_actions = QHBoxLayout()
+        snapshot_button = QPushButton("Export Runtime Snapshot")
+        snapshot_button.clicked.connect(self.export_runtime_snapshot)
+        developer_actions.addWidget(snapshot_button)
+        copy_button = QPushButton("Copy Runtime Context")
+        copy_button.clicked.connect(self.copy_runtime_context)
+        developer_actions.addWidget(copy_button)
+        developer_layout.addLayout(developer_actions)
+        layout.addWidget(self.support_developer_panel)
 
         columns = QHBoxLayout()
         columns.setSpacing(14)
@@ -3002,7 +3070,131 @@ class DevSuiteWindow(QMainWindow):
         layout.addWidget(footer)
         self.show_support_section("home")
         self.refresh_support_snapshot()
+        self.support_developer_panel.setVisible(self.developer_mode_enabled)
         return page
+
+    def handle_developer_unlock_click(self):
+        """Unlock Developer Mode after five deliberate badge clicks."""
+        if self.developer_mode_enabled:
+            self.notifications.notify(
+                "Developer Mode is already active. Manage it in Settings.",
+                "info",
+                "Developer Mode",
+            )
+            return
+        self._developer_unlock_clicks += 1
+        self._developer_unlock_timer.start(2500)
+        remaining = 5 - self._developer_unlock_clicks
+        if remaining > 0:
+            self.support_developer_badge.setToolTip(
+                f"Developer mode unlock: {remaining} click(s) remaining"
+            )
+            return
+        self._developer_unlock_clicks = 0
+        self.set_developer_mode(True, announce=True)
+
+    def set_developer_mode(self, enabled, announce=True):
+        self.developer_mode_enabled = bool(enabled)
+        self.settings.setValue("developer_mode_enabled", self.developer_mode_enabled)
+        if hasattr(self, "support_developer_panel"):
+            self.support_developer_panel.setVisible(self.developer_mode_enabled)
+        if not announce:
+            return
+        if self.developer_mode_enabled:
+            self.notifications.notify(
+                "Advanced developer tools are now available on Support.",
+                "success",
+                "Developer Mode activated",
+            )
+            QMessageBox.information(
+                self,
+                "Developer Mode activated",
+                "Developer Mode is now enabled.\n\n"
+                "You can manage it from Settings, and the advanced tools are "
+                "available on the Support page.",
+            )
+        else:
+            self.notifications.notify(
+                "Advanced developer tools have been hidden.",
+                "info",
+                "Developer Mode disabled",
+            )
+
+    def activate_panic_mode(self):
+        """Run the safe recovery sequence without modifying project files."""
+        answer = QMessageBox.question(
+            self,
+            "Activate Panic Mode?",
+            "DevSuite will run diagnostics, refresh workspace discovery, and "
+            "prepare a recovery summary. No files will be changed automatically.\n\n"
+            "Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.record_activity("Panic Mode activated")
+        self.notifications.notify(
+            "Panic Mode is running diagnostics and refreshing the workspace.",
+            "warning",
+            "Panic Mode",
+        )
+        self.refresh_workspace_views()
+        self.run_diagnostics()
+
+    def export_runtime_snapshot(self):
+        """Export extra runtime context available only in Developer Mode."""
+        path, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Export runtime snapshot",
+            str(Path.home() / "devsuite-runtime-snapshot.json"),
+            "JSON files (*.json)",
+        )
+        if not path:
+            return
+        app = QApplication.instance()
+        snapshot = {
+            "format": "trixie-devsuite-runtime-snapshot",
+            "app_version": APP_VERSION,
+            "python": sys.version,
+            "qt_platform": app.platformName() if app else None,
+            "developer_mode": self.developer_mode_enabled,
+            "active_threads": [
+                type(child).__name__
+                for child in self.findChildren(QThread)
+                if child.isRunning()
+            ],
+            "settings_keys": self.settings.allKeys(),
+            "recent_activity": self.diagnostics_log.toPlainText().splitlines()[-100:],
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(snapshot, handle, indent=2)
+                handle.write("\n")
+        except OSError as error:
+            QMessageBox.critical(self, "Could not export snapshot", str(error))
+            return
+        self.record_activity(f"Exported runtime snapshot to {path}")
+        self.notifications.notify(
+            "Runtime snapshot exported.", "success", "Developer Mode"
+        )
+
+    def copy_runtime_context(self):
+        context = (
+            f"Trixie DevSuite {APP_VERSION}\n"
+            f"Python: {sys.version.split()[0]}\n"
+            f"Qt platform: {QApplication.instance().platformName()}\n"
+            f"Developer Mode: {self.developer_mode_enabled}\n\n"
+            f"Diagnostics:\n{self.diagnostics_results.toPlainText()}\n\n"
+            "Recent activity:\n"
+            + "\n".join(self.diagnostics_log.toPlainText().splitlines()[-25:])
+        )
+        QApplication.clipboard().setText(context)
+        self.notifications.notify(
+            "Runtime context copied to the clipboard.",
+            "success",
+            "Developer Mode",
+        )
 
     def refresh_support_snapshot(self):
         """Update the Support page's live readiness cards."""
@@ -4510,6 +4702,9 @@ class DevSuiteWindow(QMainWindow):
                 self.project_search_roots,
             ) = (
                 dialog.get_settings()
+            )
+            self.set_developer_mode(
+                dialog.developer_mode_checkbox.isChecked(), announce=False
             )
             self.settings.setValue("interface_density", self.interface_density)
             self.settings.setValue("color_theme", self.color_theme)
