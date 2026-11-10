@@ -19,7 +19,12 @@ except ImportError:  # Keep the app usable before optional UI dependencies are s
     qta = None
 
 from PySide6.QtCore import (
+    QAbstractAnimation,
     QDateTime,
+    QEasingCurve,
+    QParallelAnimationGroup,
+    QPoint,
+    QPropertyAnimation,
     Qt,
     QSettings,
     QThread,
@@ -37,6 +42,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -264,16 +270,55 @@ class NotificationManager:
         toast.adjustSize()
         self.toasts.append(toast)
         self.reposition_toasts()
+
+        start_x = self.window.width()
+        end_x = self.window.width() - toast.width() - 18
+        end_y = toast.y()
+        toast.move(start_x, end_y)
+
+        slide = QPropertyAnimation(toast, b"pos", toast)
+        slide.setDuration(280)
+        slide.setStartValue(QPoint(start_x, end_y))
+        slide.setEndValue(QPoint(end_x, end_y))
+        slide.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        opacity = QGraphicsOpacityEffect(toast)
+        toast.setGraphicsEffect(opacity)
+        fade_in = QPropertyAnimation(opacity, b"opacity", toast)
+        fade_in.setDuration(280)
+        fade_in.setStartValue(0.0)
+        fade_in.setEndValue(1.0)
+
+        animation = QParallelAnimationGroup(toast)
+        animation.addAnimation(slide)
+        animation.addAnimation(fade_in)
+        toast._toast_animation = animation
+        animation.finished.connect(
+            lambda: setattr(toast, "_toast_animation", None)
+        )
         toast.show()
+        animation.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
         timer = QTimer(toast)
         timer.setSingleShot(True)
         timer.timeout.connect(lambda: self.dismiss_toast(toast))
         timer.start(4500)
 
     def dismiss_toast(self, toast):
-        if toast in self.toasts:
-            self.toasts.remove(toast)
-        toast.deleteLater()
+        if toast not in self.toasts:
+            return
+        self.toasts.remove(toast)
+        animation = getattr(toast, "_toast_animation", None)
+        if animation is not None:
+            animation.stop()
+        opacity = QGraphicsOpacityEffect(toast)
+        toast.setGraphicsEffect(opacity)
+        fade_out = QPropertyAnimation(opacity, b"opacity", toast)
+        fade_out.setDuration(200)
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.0)
+        fade_out.finished.connect(toast.deleteLater)
+        toast._toast_animation = fade_out
+        fade_out.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
         self.reposition_toasts()
 
     def reposition_toasts(self):
@@ -4187,16 +4232,12 @@ class DevSuiteWindow(QMainWindow):
         for label in self.status_optional_labels:
             label.setVisible(show_optional_status)
 
-    def apply_sidebar_state(self, force_width=False):
-        """Apply the persisted sidebar width/collapsed state."""
-        if self.sidebar_collapsed:
-            self.sidebar.setMinimumWidth(72)
-            self.sidebar.setMaximumWidth(72)
-        else:
-            sidebar_widths = {"Narrow": 200, "Standard": 230, "Wide": 280}
-            width = sidebar_widths.get(self.sidebar_width, 230)
-            self.sidebar.setMinimumWidth(width)
-            self.sidebar.setMaximumWidth(width)
+    def apply_sidebar_state(self, force_width=False, animate=False):
+        """Apply the sidebar state, optionally animating its width change."""
+        sidebar_widths = {"Narrow": 200, "Standard": 230, "Wide": 280}
+        expanded_width = sidebar_widths.get(self.sidebar_width, 230)
+        target_width = 72 if self.sidebar_collapsed else expanded_width
+        self._expanded_sidebar_width = expanded_width
 
         self.sidebar_toggle_button.setText("»" if self.sidebar_collapsed else "«")
         self.sidebar_toggle_button.setToolTip(
@@ -4211,11 +4252,37 @@ class DevSuiteWindow(QMainWindow):
             button.setText(full_text.split()[0] if self.sidebar_collapsed else full_text)
             button.setToolTip(full_text if self.sidebar_collapsed else "")
 
+        style_hints = QApplication.instance().styleHints()
+        reduce_motion = (
+            style_hints.reduceMotion()
+            if hasattr(style_hints, "reduceMotion") else False
+        )
+        should_animate = animate and not force_width and not reduce_motion
+        if should_animate:
+            self.animate_sidebar_width(target_width)
+        else:
+            self.sidebar.setMinimumWidth(target_width)
+            self.sidebar.setMaximumWidth(target_width)
+
+    def animate_sidebar_width(self, target_width):
+        """Tween both sidebar width constraints without layout flicker."""
+        current_width = self.sidebar.width()
+        self._sidebar_animation = QParallelAnimationGroup(self)
+        for property_name in (b"minimumWidth", b"maximumWidth"):
+            animation = QPropertyAnimation(self.sidebar, property_name, self)
+            animation.setDuration(260)
+            animation.setStartValue(current_width)
+            animation.setEndValue(target_width)
+            animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self._sidebar_animation.addAnimation(animation)
+        self._sidebar_animation.start(
+            QAbstractAnimation.DeletionPolicy.DeleteWhenStopped
+        )
+
     def toggle_sidebar(self):
         self.sidebar_collapsed = not self.sidebar_collapsed
         self.settings.setValue("sidebar_collapsed", self.sidebar_collapsed)
-        self._sidebar_width_applied = False
-        self.apply_sidebar_state(force_width=self.sidebar_collapsed)
+        self.apply_sidebar_state(animate=True)
         self.record_activity(
             "Collapsed sidebar" if self.sidebar_collapsed else "Expanded sidebar"
         )
