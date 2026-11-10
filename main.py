@@ -13,6 +13,10 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 import psutil
+try:
+    import qtawesome as qta
+except ImportError:  # Keep the app usable before optional UI dependencies are synced.
+    qta = None
 
 from PySide6.QtCore import (
     QDateTime,
@@ -198,6 +202,10 @@ def normalize_root(path):
     return str(Path(path).expanduser().resolve())
 
 
+def themed_icon(name, color="#00E5FF"):
+    return qta.icon(name, color=color) if qta is not None else None
+
+
 class NotificationManager:
     """Show lightweight in-app notifications and keep a small history."""
 
@@ -232,7 +240,7 @@ class NotificationManager:
         if not hasattr(self.window, "notification_button"):
             return
         count = f" {self.unread_count}" if self.unread_count else ""
-        self.window.notification_button.setText(f"♢{count}")
+        self.window.notification_button.setText(count)
         self.window.notification_button.setToolTip(
             f"Notifications ({self.unread_count} unread)"
         )
@@ -2142,7 +2150,10 @@ class DevSuiteWindow(QMainWindow):
         self.sidebar_toggle_button.clicked.connect(self.toggle_sidebar)
         sidebar_header.addWidget(self.sidebar_toggle_button)
 
-        self.notification_button = QPushButton("♢")
+        self.notification_button = QPushButton()
+        icon = themed_icon("fa5s.bell", color="#7DEBFF")
+        if icon is not None:
+            self.notification_button.setIcon(icon)
         self.notification_button.setObjectName("notification_button")
         self.notification_button.setToolTip("Notifications")
         self.notification_button.setFixedSize(38, 38)
@@ -2161,27 +2172,39 @@ class DevSuiteWindow(QMainWindow):
         section.setObjectName("section")
         sidebar_layout.addWidget(section)
 
-        dashboard_nav = self.add_nav_button(sidebar_layout, "⌂   Dashboard")
+        dashboard_nav = self.add_nav_button(
+            sidebar_layout, "Dashboard", "fa5s.home"
+        )
         dashboard_nav.clicked.connect(self.show_dashboard)
 
-        new_project_nav = self.add_nav_button(sidebar_layout, "+   New Project")
+        new_project_nav = self.add_nav_button(
+            sidebar_layout, "New Project", "fa5s.plus"
+        )
         new_project_nav.clicked.connect(self.create_new_project)
 
-        projects_nav = self.add_nav_button(sidebar_layout, "▣   My Projects")
+        projects_nav = self.add_nav_button(
+            sidebar_layout, "My Projects", "fa5s.folder-open"
+        )
         projects_nav.clicked.connect(self.show_projects)
 
-        environments_nav = self.add_nav_button(sidebar_layout, "⚙   Environments")
+        environments_nav = self.add_nav_button(
+            sidebar_layout, "Environments", "fa5s.cogs"
+        )
         environments_nav.clicked.connect(self.show_environments)
 
-        help_nav = self.add_nav_button(sidebar_layout, "?   Help")
+        help_nav = self.add_nav_button(
+            sidebar_layout, "Help", "fa5s.question-circle"
+        )
         help_nav.clicked.connect(self.show_help)
 
         troubleshooting_nav = self.add_nav_button(
-            sidebar_layout, "!   Troubleshooting"
+            sidebar_layout, "Troubleshooting", "fa5s.exclamation-triangle"
         )
         troubleshooting_nav.clicked.connect(self.show_troubleshooting)
 
-        support_nav = self.add_nav_button(sidebar_layout, "?   Support")
+        support_nav = self.add_nav_button(
+            sidebar_layout, "Support", "fa5s.life-ring"
+        )
         support_nav.clicked.connect(self.show_support)
 
         self.sidebar_nav_buttons = [
@@ -2191,7 +2214,9 @@ class DevSuiteWindow(QMainWindow):
 
         sidebar_layout.addStretch()
 
-        settings_button = self.add_nav_button(sidebar_layout, "⚙   Settings")
+        settings_button = self.add_nav_button(
+            sidebar_layout, "Settings", "fa5s.cog"
+        )
         settings_button.clicked.connect(self.open_settings)
 
         version = QLabel(f"Trixie DevSuite • V {APP_VERSION}")
@@ -4069,8 +4094,12 @@ class DevSuiteWindow(QMainWindow):
             QMessageBox.warning(self, "Package inspection failed", str(error))
 
     @staticmethod
-    def add_nav_button(layout, text):
+    def add_nav_button(layout, text, icon_name=None):
         button = QPushButton(text)
+        if icon_name:
+            icon = themed_icon(icon_name)
+            if icon is not None:
+                button.setIcon(icon)
         button.setObjectName("sidebar_nav")
         button.setCheckable(True)
         button.setMinimumHeight(42)
