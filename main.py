@@ -2426,7 +2426,10 @@ class DevSuiteWindow(QMainWindow):
         self.open_project_terminal(project)
 
     def open_shortlist_project(self, item):
-        project = Path(item.data(256))
+        path = item.data(256)
+        if not path:
+            return
+        project = Path(path)
         if project.is_dir():
             self.record_recent_project(project)
             self.open_path_in_file_manager(project)
