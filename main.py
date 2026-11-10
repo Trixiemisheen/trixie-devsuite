@@ -18,6 +18,7 @@ try:
 except ImportError:  # Keep the app usable before optional UI dependencies are synced.
     qta = None
 
+from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from PySide6.QtCore import (
     QAbstractAnimation,
     QDateTime,
@@ -32,7 +33,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -2088,7 +2089,6 @@ class DevSuiteWindow(QMainWindow):
                 min-height: 28px;
                 max-height: 28px;
                 padding: 4px;
-                qproperty-alignment: AlignCenter;
             }
 
             QPushButton#support_badge:hover {
@@ -2367,6 +2367,7 @@ class DevSuiteWindow(QMainWindow):
         stats_layout.addWidget(self.healthy_projects_card)
 
         self.content_layout.addLayout(stats_layout)
+        self.content_layout.addWidget(self.build_usage_chart_card())
 
         actions_heading = QLabel("QUICK TOOLS")
         actions_heading.setObjectName("dashboard_section")
