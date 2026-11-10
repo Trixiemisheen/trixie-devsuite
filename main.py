@@ -2919,6 +2919,34 @@ class DevSuiteWindow(QMainWindow):
         hero_layout.addWidget(description)
         layout.addWidget(hero)
 
+        snapshot = QGridLayout()
+        snapshot.setSpacing(10)
+        self.support_system_card = self.create_card("SYSTEM STATUS", "Checking...")
+        self.support_project_card = self.create_card("PROJECT HEALTH", "No project selected")
+        self.support_activity_card = self.create_card("ACTIVITY", "No activity yet")
+        snapshot.addWidget(self.support_system_card, 0, 0)
+        snapshot.addWidget(self.support_project_card, 0, 1)
+        snapshot.addWidget(self.support_activity_card, 0, 2)
+        layout.addLayout(snapshot)
+
+        action_heading = QLabel("GET UNSTUCK")
+        action_heading.setObjectName("support_section")
+        layout.addWidget(action_heading)
+        actions = QHBoxLayout()
+        diagnostics_button = QPushButton("Run Diagnostics")
+        diagnostics_button.clicked.connect(self.run_diagnostics)
+        actions.addWidget(diagnostics_button)
+        repair_button = QPushButton("Repair Selected Environment")
+        repair_button.clicked.connect(self.run_diagnostics_sync)
+        actions.addWidget(repair_button)
+        scan_button = QPushButton("Scan Workspace")
+        scan_button.clicked.connect(self.refresh_workspace_views)
+        actions.addWidget(scan_button)
+        report_button = QPushButton("Export Support Report")
+        report_button.clicked.connect(self.export_support_report)
+        actions.addWidget(report_button)
+        layout.addLayout(actions)
+
         columns = QHBoxLayout()
         columns.setSpacing(14)
 
@@ -2973,7 +3001,94 @@ class DevSuiteWindow(QMainWindow):
         footer.setWordWrap(True)
         layout.addWidget(footer)
         self.show_support_section("home")
+        self.refresh_support_snapshot()
         return page
+
+    def refresh_support_snapshot(self):
+        """Update the Support page's live readiness cards."""
+        tool_paths = {
+            "Python": sys.executable,
+            "uv": shutil.which("uv"),
+            "Git": shutil.which("git"),
+            "VS Code": shutil.which("code"),
+        }
+        missing = [name for name, path in tool_paths.items() if path is None]
+        self.support_system_card.value_label.setText(
+            "READY" if not missing else f"{len(missing)} tool issue(s)"
+        )
+        self.support_system_card.setToolTip(
+            "All core tools are available."
+            if not missing else "Missing: " + ", ".join(missing)
+        )
+
+        item = self.projects_list.currentItem()
+        project = Path(item.data(256)) if item and item.data(256) else None
+        if project is None:
+            self.support_project_card.value_label.setText("No project selected")
+        else:
+            ready = (
+                (project / "pyproject.toml").is_file()
+                and self.environment_python(project) is not None
+            )
+            self.support_project_card.value_label.setText(
+                f"{project.name}: {'READY' if ready else 'NEEDS ATTENTION'}"
+            )
+
+        activity_count = self.diagnostics_log.document().blockCount()
+        self.support_activity_card.value_label.setText(
+            f"{activity_count} event(s)"
+        )
+
+    def export_support_report(self):
+        """Export diagnostics and safe local context without source or secrets."""
+        path, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Export DevSuite support report",
+            str(Path.home() / "devsuite-support-report.json"),
+            "JSON files (*.json)",
+        )
+        if not path:
+            return
+
+        item = self.projects_list.currentItem()
+        project = Path(item.data(256)) if item and item.data(256) else None
+        report = {
+            "format": "trixie-devsuite-support-report",
+            "app_version": APP_VERSION,
+            "python_version": sys.version,
+            "tools": {
+                "python": sys.executable,
+                "uv": shutil.which("uv"),
+                "git": shutil.which("git"),
+                "vscode": shutil.which("code"),
+            },
+            "selected_project": str(project) if project else None,
+            "project_checks": (
+                {
+                    "pyproject": (project / "pyproject.toml").is_file(),
+                    "main": (project / "main.py").is_file(),
+                    "environment": self.environment_python(project) is not None,
+                    "tests": (project / "tests").is_dir(),
+                }
+                if project else None
+            ),
+            "diagnostics": self.diagnostics_results.toPlainText(),
+            "recent_activity": self.diagnostics_log.toPlainText().splitlines()[-50:],
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(report, handle, indent=2)
+                handle.write("\n")
+        except OSError as error:
+            QMessageBox.critical(self, "Could not export report", str(error))
+            return
+        self.record_activity(f"Exported support report to {path}")
+        self.notifications.notify(
+            "A safe support report was exported without source code or credentials.",
+            "success",
+            "Support report",
+        )
+        QMessageBox.information(self, "Support report exported", f"Saved to:\n{path}")
 
     def show_support_section(self, section):
         sections = {
@@ -3112,6 +3227,8 @@ class DevSuiteWindow(QMainWindow):
             return
         timestamp = QDateTime.currentDateTime().toString("HH:mm:ss")
         self.diagnostics_log.appendPlainText(f"[{timestamp}] {message}")
+        if hasattr(self, "support_activity_card"):
+            self.refresh_support_snapshot()
 
     def run_diagnostics(self):
         selected = getattr(self, "projects_list", None)
@@ -3495,6 +3612,8 @@ class DevSuiteWindow(QMainWindow):
         )
         self.status_branch_label.setText("Branch: none selected")
         self.statusBar().showMessage("Workspace refreshed", 3000)
+        if hasattr(self, "support_system_card"):
+            self.refresh_support_snapshot()
 
     def setup_keyboard_shortcuts(self):
         """Register the app-wide navigation and action shortcuts."""
@@ -3553,6 +3672,7 @@ class DevSuiteWindow(QMainWindow):
         self.set_active_nav(self.sidebar_nav_buttons[6])
         self.pages.setCurrentIndex(5)
         self.show_support_section("home")
+        self.refresh_support_snapshot()
         self.record_activity("Opened Support")
 
     def show_help(self, topic="Welcome"):
@@ -3577,9 +3697,13 @@ class DevSuiteWindow(QMainWindow):
                 "Select a project to view its health and development details."
             )
             self.status_branch_label.setText("Branch: none selected")
+            if hasattr(self, "support_project_card"):
+                self.refresh_support_snapshot()
             return
 
         project = Path(item.data(256))
+        if hasattr(self, "support_project_card"):
+            self.refresh_support_snapshot()
         self.project_details.setText("Loading project details...")
         self.statusBar().showMessage(
             f"Selected project: {project.name}", 3000
