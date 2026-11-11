@@ -691,9 +691,10 @@ class SettingsDialog(QDialog):
         ) = (
             self.get_settings()
         )
+        developer_mode = self.developer_mode_checkbox.isChecked()
         data = {
             "format": "trixie-devsuite-settings",
-            "version": 1,
+            "version": 2,
             "interface_density": density,
             "color_theme": color_theme,
             "sidebar_width": sidebar_width,
@@ -703,6 +704,7 @@ class SettingsDialog(QDialog):
             "auto_refresh_projects": auto_refresh,
             "refresh_interval": interval,
             "project_search_roots": roots,
+            "developer_mode_enabled": developer_mode,
         }
         try:
             with open(path, "w", encoding="utf-8") as handle:
@@ -755,6 +757,7 @@ class SettingsDialog(QDialog):
         auto_refresh = data.get("auto_refresh_projects")
         interval = data.get("refresh_interval")
         roots = data.get("project_search_roots")
+        developer_mode = data.get("developer_mode_enabled", False)
         valid = (
             density in {"Comfortable", "Compact"}
             and color_theme in THEME_COLOR_MAPS
@@ -766,6 +769,7 @@ class SettingsDialog(QDialog):
             and interval in {15, 30, 60}
             and isinstance(roots, list)
             and all(isinstance(root, str) and root.strip() for root in roots)
+            and isinstance(developer_mode, bool)
         )
         if not valid:
             QMessageBox.warning(
@@ -782,6 +786,7 @@ class SettingsDialog(QDialog):
         self.python_version_combo.setCurrentText(python_version)
         self.auto_refresh_checkbox.setChecked(auto_refresh)
         self.refresh_interval_combo.setCurrentText(f"{interval} seconds")
+        self.developer_mode_checkbox.setChecked(developer_mode)
         self.folders_list.clear()
         for root in roots:
             normalized = normalize_root(root)
@@ -832,7 +837,7 @@ class NewProjectDialog(QDialog):
         self.setWindowTitle("Create a New Python Project — Step 1 of 2")
         self.setMinimumWidth(480)
 
-        self.setStyleSheet("""
+        self.setStyleSheet(apply_theme_stylesheet("""
             QDialog {
                 background-color: #151821;
                 color: #E6EDF3;
@@ -861,7 +866,7 @@ class NewProjectDialog(QDialog):
             QPushButton:hover {
                 background-color: #293548;
             }
-        """)
+        """, parent.color_theme if parent else "Dev Cyan"))
 
         self.project_name = QLineEdit()
         self.project_name.setPlaceholderText(
@@ -1370,6 +1375,63 @@ class SyncWorker(QThread):
             self.completed.emit(1)
 
 
+class CommandWorker(QThread):
+    """Run a command away from the GUI thread and return combined output."""
+    completed = Signal(object)
+
+    def __init__(self, command, cwd, timeout=300):
+        super().__init__()
+        self.command = list(command)
+        self.cwd = str(cwd)
+        self.timeout = timeout
+        self._process = None
+
+    def run(self):
+        try:
+            self._process = subprocess.Popen(
+                self.command,
+                cwd=self.cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            output, _ = self._process.communicate(timeout=self.timeout)
+            result = {
+                "returncode": self._process.returncode,
+                "output": output or "",
+                "timed_out": False,
+                "error": None,
+            }
+        except subprocess.TimeoutExpired as error:
+            if self._process is not None:
+                self._process.kill()
+                output, _ = self._process.communicate()
+            else:
+                output = ""
+            result = {
+                "returncode": None,
+                "output": output or "",
+                "timed_out": True,
+                "error": str(error),
+            }
+        except OSError as error:
+            result = {
+                "returncode": None,
+                "output": "",
+                "timed_out": False,
+                "error": str(error),
+            }
+        finally:
+            self._process = None
+        self.completed.emit(result)
+
+    def cancel(self):
+        if self._process is not None and self._process.poll() is None:
+            self._process.terminate()
+
+
 class PackageAdvisorDialog(QDialog):
     """Step 2 of the New Project flow: rule-based offline package picks."""
 
@@ -1380,7 +1442,7 @@ class PackageAdvisorDialog(QDialog):
         self.setMinimumSize(650, 560)
         self.package_checks = {}
 
-        self.setStyleSheet("""
+        self.setStyleSheet(apply_theme_stylesheet("""
             QDialog, QWidget {
                 background-color: #151821;
                 color: #E6EDF3;
@@ -1408,7 +1470,7 @@ class PackageAdvisorDialog(QDialog):
                 color: #10141C;
                 font-weight: bold;
             }
-        """)
+        """, parent.color_theme if parent else "Dev Cyan"))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 22, 22, 22)
@@ -4125,42 +4187,42 @@ class DevSuiteWindow(QMainWindow):
                 return
             command = [str(python_executable), "-m", *arguments]
 
-        try:
-            result = subprocess.run(
-                command,
-                cwd=str(project),
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            QMessageBox.warning(
-                self, f"{label} timed out",
-                f"{label} exceeded the five-minute time limit.",
-            )
-            return
-        except OSError as error:
-            QMessageBox.critical(self, f"Could not run {label.lower()}", str(error))
-            return
-
-        output = (result.stdout or "") + (result.stderr or "")
         dialog = QDialog(self)
         dialog.setWindowTitle(f"{label} • {project.name}")
         dialog.resize(760, 520)
         layout = QVBoxLayout(dialog)
-        status = QLabel(
-            f"{label} {'passed' if result.returncode == 0 else 'failed'} "
-            f"(exit code {result.returncode})"
-        )
+        status = QLabel(f"Running {label}…")
         layout.addWidget(status)
         output_view = QPlainTextEdit()
         output_view.setReadOnly(True)
-        output_view.setPlainText(output.strip() or "No output was produced.")
         layout.addWidget(output_view, 1)
         close_button = QPushButton("Close")
+        close_button.setEnabled(False)
         close_button.clicked.connect(dialog.accept)
         layout.addWidget(close_button)
+
+        worker = CommandWorker(command, project)
+        self.project_check_worker = worker
+
+        def finished(result):
+            if result["timed_out"]:
+                status.setText(f"{label} timed out after five minutes.")
+            elif result["error"]:
+                status.setText(f"Could not run {label.lower()}: {result['error']}")
+            else:
+                code = result["returncode"]
+                status.setText(
+                    f"{label} {'passed' if code == 0 else 'failed'} "
+                    f"(exit code {code})"
+                )
+            output_view.setPlainText(
+                result["output"].strip() or "No output was produced."
+            )
+            close_button.setEnabled(True)
+            self.project_check_worker = None
+
+        worker.completed.connect(finished)
+        worker.start()
         dialog.exec()
 
     def test_selected_project(self):
@@ -4227,35 +4289,46 @@ class DevSuiteWindow(QMainWindow):
         layout.addWidget(close_button)
 
         uv_path = shutil.which("uv")
+        active_worker = None
 
         def display_result(label, command):
-            try:
-                result = subprocess.run(
-                    command,
-                    cwd=str(project),
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired:
-                output.setPlainText(f"{label} timed out after five minutes.")
+            nonlocal active_worker
+            if active_worker is not None and active_worker.isRunning():
                 return
-            except OSError as error:
-                output.setPlainText(f"Could not run {label.lower()}:\n{error}")
-                return
+            for button in (list_button, add_button, remove_button, upgrade_button):
+                button.setEnabled(False)
+            close_button.setEnabled(False)
+            output.setPlainText(f"{label} is running…\n\n$ {' '.join(command)}")
+            active_worker = CommandWorker(command, project)
+            self.dependency_worker = active_worker
 
-            command_output = (result.stdout or "") + (result.stderr or "")
-            status = "completed successfully" if result.returncode == 0 else (
-                f"failed with exit code {result.returncode}"
-            )
-            output.setPlainText(
-                f"{label} {status}.\n\n"
-                f"$ {' '.join(command)}\n\n"
-                f"{command_output.strip() or 'No output was produced.'}"
-            )
-            if result.returncode == 0:
-                self.refresh_workspace_views()
+            def finished(result):
+                nonlocal active_worker
+                if result["timed_out"]:
+                    message = f"{label} timed out after five minutes."
+                elif result["error"]:
+                    message = f"Could not run {label.lower()}:\n{result['error']}"
+                else:
+                    code = result["returncode"]
+                    status = "completed successfully" if code == 0 else (
+                        f"failed with exit code {code}"
+                    )
+                    message = (
+                        f"{label} {status}.\n\n"
+                        f"$ {' '.join(command)}\n\n"
+                        f"{result['output'].strip() or 'No output was produced.'}"
+                    )
+                output.setPlainText(message)
+                for button in (list_button, add_button, remove_button, upgrade_button):
+                    button.setEnabled(True)
+                close_button.setEnabled(True)
+                if result["returncode"] == 0:
+                    self.refresh_workspace_views()
+                active_worker = None
+                self.dependency_worker = None
+
+            active_worker.completed.connect(finished)
+            active_worker.start()
 
         def package_name():
             value = package_input.text().strip()
@@ -4548,7 +4621,8 @@ class DevSuiteWindow(QMainWindow):
     def append_usage_chart_sample(self, cpu_percent, memory_percent):
         if not hasattr(self, "cpu_series"):
             return
-        sample = self.cpu_series.count()
+        sample = getattr(self, "_usage_sample_index", 0)
+        self._usage_sample_index = sample + 1
         self.cpu_series.append(sample, cpu_percent)
         self.ram_series.append(sample, memory_percent)
         max_points = 60
@@ -4607,11 +4681,17 @@ class DevSuiteWindow(QMainWindow):
                 getattr(self, "help_search_worker", None),
                 getattr(self, "workspace_refresh_worker", None),
                 getattr(self, "project_details_worker", None),
+                getattr(self, "diagnostics_worker", None),
+                getattr(self, "diagnostics_sync_worker", None),
+                getattr(self, "project_check_worker", None),
+                getattr(self, "dependency_worker", None),
                 *setup_workers,
             )
             if worker is not None and worker.isRunning()
         ]
         for worker in workers:
+            if hasattr(worker, "cancel"):
+                worker.cancel()
             worker.wait(13000)
 
         super().closeEvent(event)
