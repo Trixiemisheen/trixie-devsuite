@@ -1,9 +1,11 @@
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import tomllib
 import webbrowser
@@ -1377,6 +1379,7 @@ class SyncWorker(QThread):
 
 class CommandWorker(QThread):
     """Run a command away from the GUI thread and return combined output."""
+    output = Signal(str)
     completed = Signal(object)
 
     def __init__(self, command, cwd, timeout=300):
@@ -1387,6 +1390,8 @@ class CommandWorker(QThread):
         self._process = None
 
     def run(self):
+        output_queue = queue.Queue()
+        output_lines = []
         try:
             self._process = subprocess.Popen(
                 self.command,
@@ -1397,22 +1402,47 @@ class CommandWorker(QThread):
                 encoding="utf-8",
                 errors="replace",
             )
-            output, _ = self._process.communicate(timeout=self.timeout)
+            def read_output():
+                for line in self._process.stdout:
+                    output_queue.put(line.rstrip())
+
+            reader = threading.Thread(target=read_output, daemon=True)
+            reader.start()
+            deadline = time.monotonic() + self.timeout
+            while self._process.poll() is None:
+                try:
+                    while True:
+                        line = output_queue.get_nowait()
+                        output_lines.append(line)
+                        self.output.emit(line)
+                except queue.Empty:
+                    pass
+                if time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(self.command, self.timeout)
+                self.msleep(50)
+            reader.join(timeout=1)
+            try:
+                while True:
+                    line = output_queue.get_nowait()
+                    output_lines.append(line)
+                    self.output.emit(line)
+            except queue.Empty:
+                pass
             result = {
                 "returncode": self._process.returncode,
-                "output": output or "",
+                "output": "\n".join(output_lines),
                 "timed_out": False,
                 "error": None,
             }
         except subprocess.TimeoutExpired as error:
             if self._process is not None:
                 self._process.kill()
-                output, _ = self._process.communicate()
-            else:
-                output = ""
+                self._process.wait()
+            while not output_queue.empty():
+                output_lines.append(output_queue.get())
             result = {
                 "returncode": None,
-                "output": output or "",
+                "output": "\n".join(output_lines),
                 "timed_out": True,
                 "error": str(error),
             }
@@ -4195,14 +4225,23 @@ class DevSuiteWindow(QMainWindow):
         layout.addWidget(status)
         output_view = QPlainTextEdit()
         output_view.setReadOnly(True)
+        output_view.setPlaceholderText("Command output will appear here…")
         layout.addWidget(output_view, 1)
+        cancel_button = QPushButton("Cancel")
         close_button = QPushButton("Close")
         close_button.setEnabled(False)
+        cancel_button.setEnabled(True)
+        layout.addWidget(cancel_button)
         close_button.clicked.connect(dialog.accept)
         layout.addWidget(close_button)
 
         worker = CommandWorker(command, project)
         self.project_check_worker = worker
+        worker.output.connect(output_view.appendPlainText)
+        cancel_button.clicked.connect(
+            lambda: (worker.cancel(), cancel_button.setEnabled(False),
+                     status.setText(f"Cancelling {label}…"))
+        )
 
         def finished(result):
             if result["timed_out"]:
@@ -4219,6 +4258,7 @@ class DevSuiteWindow(QMainWindow):
                 result["output"].strip() or "No output was produced."
             )
             close_button.setEnabled(True)
+            cancel_button.setEnabled(False)
             self.project_check_worker = None
 
         worker.completed.connect(finished)
@@ -4284,12 +4324,20 @@ class DevSuiteWindow(QMainWindow):
         output.setPlaceholderText("Dependency command output will appear here.")
         layout.addWidget(output, 1)
 
+        cancel_button = QPushButton("Cancel active command")
+        cancel_button.setEnabled(False)
+        layout.addWidget(cancel_button)
         close_button = QPushButton("Close")
         close_button.clicked.connect(dialog.accept)
         layout.addWidget(close_button)
 
         uv_path = shutil.which("uv")
         active_worker = None
+        cancel_button.clicked.connect(
+            lambda: active_worker.cancel()
+            if active_worker is not None and active_worker.isRunning()
+            else None
+        )
 
         def display_result(label, command):
             nonlocal active_worker
@@ -4301,6 +4349,8 @@ class DevSuiteWindow(QMainWindow):
             output.setPlainText(f"{label} is running…\n\n$ {' '.join(command)}")
             active_worker = CommandWorker(command, project)
             self.dependency_worker = active_worker
+            cancel_button.setEnabled(True)
+            active_worker.output.connect(output.appendPlainText)
 
             def finished(result):
                 nonlocal active_worker
@@ -4322,6 +4372,7 @@ class DevSuiteWindow(QMainWindow):
                 for button in (list_button, add_button, remove_button, upgrade_button):
                     button.setEnabled(True)
                 close_button.setEnabled(True)
+                cancel_button.setEnabled(False)
                 if result["returncode"] == 0:
                     self.refresh_workspace_views()
                 active_worker = None
