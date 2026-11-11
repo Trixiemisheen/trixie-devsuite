@@ -3704,6 +3704,10 @@ class DevSuiteWindow(QMainWindow):
         self.status_usage_label.setText(
             f"CPU: {cpu_percent:.0f}%  RAM: {memory_percent:.0f}%"
         )
+        if hasattr(self, "usage_chart_title"):
+            self.usage_chart_title.setText(
+                f"SYSTEM USAGE  /  LIVE     CPU {cpu_percent:.0f}%   RAM {memory_percent:.0f}%"
+            )
         self.status_usage_label.setToolTip(
             "Current system resource usage. Updated every 2 seconds."
         )
@@ -4613,6 +4617,7 @@ class DevSuiteWindow(QMainWindow):
 
         title = QLabel("SYSTEM USAGE  /  LIVE")
         title.setObjectName("card_title")
+        self.usage_chart_title = title
         layout.addWidget(title)
 
         self.cpu_series = QLineSeries()
