@@ -2805,6 +2805,10 @@ class DevSuiteWindow(QMainWindow):
         filter_row.addWidget(self.project_sort_combo)
         layout.addLayout(filter_row)
 
+        self.project_results_label = QLabel("Ready to scan your workspace")
+        self.project_results_label.setObjectName("subtitle")
+        layout.addWidget(self.project_results_label)
+
         self.projects_list = QListWidget()
         self.projects_list.setStyleSheet(
             "QListWidget { background-color: #202633; border: 1px solid #303849; "
@@ -3152,6 +3156,87 @@ class DevSuiteWindow(QMainWindow):
         ])
         layout.addLayout(columns)
 
+        privacy_card = QFrame()
+        privacy_card.setObjectName("support_column")
+        privacy_layout = QVBoxLayout(privacy_card)
+        privacy_layout.setContentsMargins(16, 14, 16, 14)
+        privacy_heading = QLabel("PRIVACY PROMISE")
+        privacy_heading.setObjectName("support_section")
+        privacy_layout.addWidget(privacy_heading)
+        privacy_text = QLabel(
+            "DevSuite is local-first. It does not upload your source code or "
+            "credentials. Support reports can include paths, tool locations, "
+            "diagnostics, and recent activity—review them before sharing."
+        )
+        privacy_text.setObjectName("support_detail")
+        privacy_text.setWordWrap(True)
+        privacy_layout.addWidget(privacy_text)
+        privacy_actions = QHBoxLayout()
+        privacy_button = QPushButton("Copy privacy summary")
+        privacy_button.setObjectName("support_link")
+        privacy_button.clicked.connect(self.copy_support_privacy_summary)
+        privacy_actions.addWidget(privacy_button)
+        privacy_report_button = QPushButton("Export reviewed report")
+        privacy_report_button.setObjectName("support_link")
+        privacy_report_button.clicked.connect(self.export_support_report)
+        privacy_actions.addWidget(privacy_report_button)
+        privacy_layout.addLayout(privacy_actions)
+        layout.addWidget(privacy_card)
+
+        resource_row = QHBoxLayout()
+        resource_row.setSpacing(14)
+
+        def add_external_column(title, links):
+            column = QFrame()
+            column.setObjectName("support_column")
+            column_layout = QVBoxLayout(column)
+            column_layout.setContentsMargins(16, 14, 16, 14)
+            column_layout.setSpacing(3)
+            section = QLabel(title.upper())
+            section.setObjectName("support_section")
+            column_layout.addWidget(section)
+            for label, url in links:
+                button = QPushButton(f"↗  {label}")
+                button.setObjectName("support_link")
+                button.setToolTip(url)
+                button.clicked.connect(
+                    lambda _checked=False, target=url: self.open_support_url(target)
+                )
+                column_layout.addWidget(button)
+            column_layout.addStretch()
+            resource_row.addWidget(column, 1)
+
+        add_external_column("Developer resources", [
+            ("uv documentation", "https://docs.astral.sh/uv/"),
+            ("Python documentation", "https://docs.python.org/3/"),
+            ("PyPI packages", "https://pypi.org/"),
+            ("Git downloads", "https://git-scm.com/downloads"),
+        ])
+        add_external_column("Connect", [
+            ("GitHub project", "https://github.com/Trixiemisheen/trixie-devsuite"),
+            ("Telegram", "https://t.me/Trixie_Misheen"),
+            ("Instagram", "https://instagram.com/trixiemisheen"),
+            ("WhatsApp", "https://wa.me/254791915925"),
+        ])
+        layout.addLayout(resource_row)
+
+        ideas_card = QFrame()
+        ideas_card.setObjectName("support_column")
+        ideas_layout = QHBoxLayout(ideas_card)
+        ideas_layout.setContentsMargins(16, 14, 16, 14)
+        ideas_text = QLabel(
+            "Have a strange, ambitious, or delightfully unnecessary idea? "
+            "Capture it before it disappears."
+        )
+        ideas_text.setObjectName("support_detail")
+        ideas_text.setWordWrap(True)
+        ideas_layout.addWidget(ideas_text, 1)
+        idea_button = QPushButton("Copy wild idea brief")
+        idea_button.setObjectName("primary")
+        idea_button.clicked.connect(self.copy_wild_idea_brief)
+        ideas_layout.addWidget(idea_button)
+        layout.addWidget(ideas_card)
+
         self.support_detail = QLabel()
         self.support_detail.setObjectName("support_detail")
         self.support_detail.setWordWrap(True)
@@ -3237,6 +3322,42 @@ class DevSuiteWindow(QMainWindow):
         )
         self.refresh_workspace_views()
         self.run_diagnostics()
+
+    def open_support_url(self, url):
+        """Open a support or developer resource in the default browser."""
+        webbrowser.open(url)
+        self.record_activity(f"Opened support link: {url}")
+
+    def copy_support_privacy_summary(self):
+        summary = (
+            "Trixie DevSuite is local-first. It does not include project source "
+            "code or credentials in support reports. Reports may contain local "
+            "paths, executable locations, diagnostics, and recent activity."
+        )
+        QApplication.clipboard().setText(summary)
+        self.notifications.notify(
+            "Privacy summary copied to the clipboard.",
+            "success",
+            "Privacy",
+        )
+        self.record_activity("Copied support privacy summary")
+
+    def copy_wild_idea_brief(self):
+        brief = (
+            "DevSuite idea brief\n\n"
+            "Idea:\n"
+            "Why it would be useful or fun:\n"
+            "What the smallest first version could do:\n"
+            "What could make it delightfully weird:\n"
+            "Privacy or safety considerations:\n"
+        )
+        QApplication.clipboard().setText(brief)
+        self.notifications.notify(
+            "A wild idea brief is ready in your clipboard.",
+            "success",
+            "Idea Lab",
+        )
+        self.record_activity("Copied wild idea brief")
 
     def export_runtime_snapshot(self):
         """Export extra runtime context available only in Developer Mode."""
@@ -3780,7 +3901,8 @@ class DevSuiteWindow(QMainWindow):
             worker.deleteLater()
 
     def apply_workspace_refresh(self, records):
-        projects = [Path(record["path"]) for record in records]
+        all_projects = [Path(record["path"]) for record in records]
+        projects = list(all_projects)
         environment_records = {
             record["path"]: record for record in records if record["python"]
         }
@@ -3808,6 +3930,15 @@ class DevSuiteWindow(QMainWindow):
                     path.name.casefold(),
                 )
             )
+        if search_text:
+            self.project_results_label.setText(
+                f"Showing {len(projects)} of {len(all_projects)} discovered projects"
+            )
+        else:
+            self.project_results_label.setText(
+                f"{len(projects)} discovered project"
+                f"{'s' if len(projects) != 1 else ''}"
+            )
         self.favorite_projects = [
             path for path in self.favorite_projects if Path(path).is_dir()
         ]
@@ -3824,11 +3955,22 @@ class DevSuiteWindow(QMainWindow):
         environment_count = 0
 
         for project in projects:
-            item = QListWidgetItem(f"{project.name}\n{project}")
+            environment = environment_records.get(str(project))
+            has_metadata = (project / "pyproject.toml").is_file()
+            has_entrypoint = (project / "main.py").is_file()
+            is_ready = bool(environment and has_metadata and has_entrypoint)
+            state = "Ready" if is_ready else "Needs setup"
+            environment_label = (
+                environment["version"] if environment else "No virtual environment"
+            )
+            pinned_marker = "★  " if str(project) in self.favorite_projects else ""
+            item = QListWidgetItem(
+                f"{pinned_marker}{project.name}\n"
+                f"{state}  •  {environment_label}\n{project}"
+            )
             item.setData(256, str(project))
             self.projects_list.addItem(item)
 
-            environment = environment_records.get(str(project))
             if environment:
                 environment_count += 1
                 env_item = QListWidgetItem(
@@ -3874,7 +4016,7 @@ class DevSuiteWindow(QMainWindow):
 
         if not projects:
             empty = QListWidgetItem(
-                "Developer! No projects found yet. Create one with + New Project."
+                "No matching projects found. Create a project or adjust your search folders."
             )
             empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self.projects_list.addItem(empty)
