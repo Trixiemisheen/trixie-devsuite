@@ -394,6 +394,7 @@ def git_current_branch(project_path):
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=str(project_path), capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
             timeout=5, check=False,
         )
         if result.returncode == 0:
@@ -1271,7 +1272,8 @@ class WorkspaceRefreshWorker(QThread):
                 try:
                     result = subprocess.run(
                         [str(python_executable), "--version"],
-                        capture_output=True, text=True, timeout=5, check=False,
+                        capture_output=True, text=True, encoding="utf-8",
+                        errors="replace", timeout=5, check=False,
                     )
                     version = (result.stdout or result.stderr).strip()
                     if result.returncode != 0 or not version:
@@ -1302,7 +1304,7 @@ class ProjectDetailsWorker(QThread):
             result = subprocess.run(
                 ["git", "status", "--short"],
                 cwd=str(self.project), capture_output=True, text=True,
-                timeout=5, check=False,
+                encoding="utf-8", errors="replace", timeout=5, check=False,
             )
             changed_files = len(result.stdout.splitlines())
         except (OSError, subprocess.TimeoutExpired):
@@ -1334,7 +1336,8 @@ class DiagnosticsWorker(QThread):
                 continue
             try:
                 check = subprocess.run([executable, *command[1:]], capture_output=True,
-                                       text=True, timeout=5, check=False)
+                                       text=True, encoding="utf-8", errors="replace",
+                                       timeout=5, check=False)
                 detail = (check.stdout or check.stderr).strip()
                 results.append((label, "HEALTHY" if check.returncode == 0 else "WARNING",
                                 detail or f"Exited with code {check.returncode}"))
@@ -4629,6 +4632,8 @@ class DevSuiteWindow(QMainWindow):
                     cwd=str(project),
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=30,
                     check=False,
                 )
@@ -4715,7 +4720,7 @@ class DevSuiteWindow(QMainWindow):
             result = subprocess.run(
                 [uv_path, "pip", "list", "--python", str(python_executable)],
                 cwd=str(project), capture_output=True, text=True,
-                timeout=60, check=False,
+                encoding="utf-8", errors="replace", timeout=60, check=False,
             )
             output = (result.stdout or "").strip()
             if result.returncode != 0:
