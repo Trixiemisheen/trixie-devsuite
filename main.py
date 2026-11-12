@@ -1118,6 +1118,9 @@ HELP_RESOURCES = {
         ("Install VS Code", "https://code.visualstudio.com/download"),
     ],
     "About & Owner": [
+        ("Website", "https://trixiemisheen.site/"),
+        ("Support center", "https://trixiemisheen.site/support.html"),
+        ("Privacy policy", "https://trixiemisheen.site/privacy.html"),
         ("Telegram", "https://t.me/Trixie_Misheen"),
         ("Instagram", "https://instagram.com/trixiemisheen"),
         ("WhatsApp", "https://wa.me/254791915925"),
@@ -3216,6 +3219,9 @@ class DevSuiteWindow(QMainWindow):
             ("Git downloads", "https://git-scm.com/downloads"),
         ])
         add_external_column("Connect", [
+            ("Trixie Misheen website", "https://trixiemisheen.site/"),
+            ("Support center", "https://trixiemisheen.site/support.html"),
+            ("Privacy policy", "https://trixiemisheen.site/privacy.html"),
             ("GitHub project", "https://github.com/Trixiemisheen/trixie-devsuite"),
             ("Telegram", "https://t.me/Trixie_Misheen"),
             ("Instagram", "https://instagram.com/trixiemisheen"),
@@ -5309,6 +5315,51 @@ class DevSuiteWindow(QMainWindow):
         worker.finished.connect(lambda: setattr(self, "active_setup_worker", None))
         worker.start()
         progress_dialog.exec()
+
+
+    def closeEvent(self, event):
+        """Stop active workers before Qt destroys the main window."""
+        worker_names = (
+            "refresh_worker",
+            "project_details_worker",
+            "diagnostics_worker",
+            "diagnostics_sync_worker",
+            "project_check_worker",
+            "dependency_worker",
+            "active_setup_worker",
+        )
+        active_workers = []
+        seen = set()
+        for name in worker_names:
+            worker = getattr(self, name, None)
+            if worker is None or id(worker) in seen or not worker.isRunning():
+                continue
+            seen.add(id(worker))
+            active_workers.append(worker)
+
+        if not active_workers:
+            event.accept()
+            return
+
+        for worker in active_workers:
+            cancel = getattr(worker, "cancel", None)
+            if callable(cancel):
+                cancel()
+
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            still_running = [worker for worker in active_workers if worker.isRunning()]
+            if not still_running:
+                event.accept()
+                return
+            for worker in still_running:
+                worker.wait(100)
+
+        self.notifications.notify(
+            "A background operation is still stopping. Try closing again in a moment.",
+            "warning",
+        )
+        event.ignore()
 
 
 def main():

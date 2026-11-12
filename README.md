@@ -180,6 +180,9 @@ the feature set grows.
 
 ## Owner links
 
+- [Website](https://trixiemisheen.site/)
+- [Support center](https://trixiemisheen.site/support.html)
+- [Privacy policy](https://trixiemisheen.site/privacy.html)
 - [Telegram](https://t.me/Trixie_Misheen)
 - [Instagram](https://instagram.com/trixiemisheen)
 - [WhatsApp](https://wa.me/254791915925)
