@@ -1,3 +1,4 @@
+from updater.engine import UpdateManager
 import json
 import os
 import queue
@@ -2398,7 +2399,7 @@ class DevSuiteWindow(QMainWindow):
         )
         settings_button.clicked.connect(self.open_settings)
 
-        version = QLabel(f"Trixie DevSuite • V {APP_VERSION}")
+        version = QLabel(f"Trixie DevSuite • V{APP_VERSION}")
         self.sidebar_version_label = version
         version.setStyleSheet(
             "color: #697586; font-size: 10px; padding: 8px;"
