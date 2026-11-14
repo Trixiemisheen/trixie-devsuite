@@ -30,6 +30,7 @@ from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
     QMargins,
+    QProcess,
     Qt,
     QSettings,
     QThread,
@@ -1469,6 +1470,27 @@ class CommandWorker(QThread):
             self._process.terminate()
 
 
+class UpdateWorker(QThread):
+    completed = Signal(object)
+
+    def __init__(self, manager, install=False):
+        super().__init__()
+        self.manager = manager
+        self.install = install
+
+    def run(self):
+        if self.install:
+            self.completed.emit({
+                "install": True,
+                "result": self.manager.install_source_updates(),
+            })
+            return
+        self.completed.emit({
+            "install": False,
+            "result": self.manager.check_for_updates(),
+        })
+
+
 class PackageAdvisorDialog(QDialog):
     """Step 2 of the New Project flow: rule-based offline package picks."""
 
@@ -1834,6 +1856,10 @@ class DevSuiteWindow(QMainWindow):
 
         self.settings = QSettings(APP_ORG, APP_NAME)
         self.notifications = NotificationManager(self)
+        self.update_manager = UpdateManager(
+            APP_VERSION,
+            repo_path=Path(__file__).resolve().parent,
+        )
         self.interface_density = self.settings.value(
             "interface_density", "Comfortable", str
         )
@@ -2586,6 +2612,7 @@ class DevSuiteWindow(QMainWindow):
         self.update_status_clock()
         self.update_status_usage()
         self.check_connectivity()
+        QTimer.singleShot(2000, self.check_for_updates)
 
     # ---- Settings helpers ----
 
@@ -3856,6 +3883,101 @@ class DevSuiteWindow(QMainWindow):
         self.connectivity_worker.finished.connect(self.clear_connectivity_worker)
         self.connectivity_worker.start()
 
+    def check_for_updates(self):
+        worker = getattr(self, "update_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        self.statusBar().showMessage("Checking for DevSuite updates...", 5000)
+        self.update_worker = UpdateWorker(self.update_manager)
+        self.update_worker.completed.connect(self.handle_update_check)
+        self.update_worker.finished.connect(self.clear_update_worker)
+        self.update_worker.start()
+
+    def clear_update_worker(self):
+        worker = self.update_worker
+        self.update_worker = None
+        if worker is not None:
+            worker.deleteLater()
+
+    def handle_update_check(self, payload):
+        result = payload["result"]
+        if not result.available:
+            self.statusBar().showMessage(result.message, 5000)
+            return
+
+        if result.install_type != "source":
+            self.notifications.notify(
+                f"{result.message} Download the latest release manually.",
+                "info",
+                "New release available",
+            )
+            return
+
+        if not result.safe_to_install:
+            self.notifications.notify(
+                result.message,
+                "warning",
+                "Update requires attention",
+            )
+            return
+
+        self.notifications.notify(
+            result.message,
+            "info",
+            "DevSuite update available",
+        )
+        answer = QMessageBox.question(
+            self,
+            "DevSuite update available",
+            f"{result.message}\n\n"
+            "Install the update now? DevSuite will only use a safe "
+            "fast-forward update and will not overwrite local changes.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.install_update()
+
+    def install_update(self):
+        worker = getattr(self, "update_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        self.statusBar().showMessage("Installing DevSuite update...", 0)
+        self.update_worker = UpdateWorker(self.update_manager, install=True)
+        self.update_worker.completed.connect(self.handle_update_install)
+        self.update_worker.finished.connect(self.clear_update_worker)
+        self.update_worker.start()
+
+    def handle_update_install(self, payload):
+        success, message = payload["result"]
+        if not success:
+            self.notifications.notify(
+                message,
+                "error",
+                "DevSuite update failed",
+            )
+            self.statusBar().showMessage(message, 10000)
+            return
+
+        self.notifications.notify(
+            message,
+            "success",
+            "DevSuite updated",
+        )
+        answer = QMessageBox.question(
+            self,
+            "Restart DevSuite",
+            "The update was installed successfully. Restart DevSuite now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.restart_application()
+
+    def restart_application(self):
+        QProcess.startDetached(sys.executable, sys.argv)
+        QApplication.instance().quit()
+
     def clear_connectivity_worker(self):
         worker = self.connectivity_worker
         self.connectivity_worker = None
@@ -4895,6 +5017,7 @@ class DevSuiteWindow(QMainWindow):
                 getattr(self, "diagnostics_sync_worker", None),
                 getattr(self, "project_check_worker", None),
                 getattr(self, "dependency_worker", None),
+                getattr(self, "update_worker", None),
                 *setup_workers,
             )
             if worker is not None and worker.isRunning()
