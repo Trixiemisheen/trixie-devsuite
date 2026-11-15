@@ -4993,42 +4993,6 @@ class DevSuiteWindow(QMainWindow):
         if hasattr(self, "notifications"):
             self.notifications.reposition_toasts()
 
-    def closeEvent(self, event):
-        self.refresh_timer.stop()
-        self.status_clock_timer.stop()
-        self.status_usage_timer.stop()
-        self.connectivity_timer.stop()
-
-        setup_workers = self.findChildren(ProjectSetupWorker)
-        active_setup_worker = getattr(self, "active_setup_worker", None)
-        if active_setup_worker is not None and active_setup_worker not in setup_workers:
-            setup_workers.append(active_setup_worker)
-        for worker in setup_workers:
-            if worker.isRunning():
-                worker.cancel()
-
-        workers = [
-            worker for worker in (
-                getattr(self, "connectivity_worker", None),
-                getattr(self, "help_search_worker", None),
-                getattr(self, "workspace_refresh_worker", None),
-                getattr(self, "project_details_worker", None),
-                getattr(self, "diagnostics_worker", None),
-                getattr(self, "diagnostics_sync_worker", None),
-                getattr(self, "project_check_worker", None),
-                getattr(self, "dependency_worker", None),
-                getattr(self, "update_worker", None),
-                *setup_workers,
-            )
-            if worker is not None and worker.isRunning()
-        ]
-        for worker in workers:
-            if hasattr(worker, "cancel"):
-                worker.cancel()
-            worker.wait(13000)
-
-        super().closeEvent(event)
-
     def update_responsive_layout(self):
         width = self.width()
         short_window = self.height() < 800
@@ -5442,46 +5406,62 @@ class DevSuiteWindow(QMainWindow):
 
 
     def closeEvent(self, event):
-        """Stop active workers before Qt destroys the main window."""
+        """Stop every background worker before Qt destroys the main window."""
+        for timer_name in (
+            "refresh_timer",
+            "status_clock_timer",
+            "status_usage_timer",
+            "connectivity_timer",
+        ):
+            timer = getattr(self, timer_name, None)
+            if timer is not None:
+                timer.stop()
+
         worker_names = (
-            "refresh_worker",
+            "connectivity_worker",
+            "help_search_worker",
+            "workspace_refresh_worker",
             "project_details_worker",
             "diagnostics_worker",
             "diagnostics_sync_worker",
             "project_check_worker",
             "dependency_worker",
+            "update_worker",
             "active_setup_worker",
         )
         active_workers = []
         seen = set()
-        for name in worker_names:
-            worker = getattr(self, name, None)
+        for worker in (
+            *(getattr(self, name, None) for name in worker_names),
+            *self.findChildren(QThread),
+        ):
             if worker is None or id(worker) in seen or not worker.isRunning():
                 continue
             seen.add(id(worker))
             active_workers.append(worker)
-
-        if not active_workers:
-            event.accept()
-            return
 
         for worker in active_workers:
             cancel = getattr(worker, "cancel", None)
             if callable(cancel):
                 cancel()
 
-        deadline = time.monotonic() + 3
-        while time.monotonic() < deadline:
-            still_running = [worker for worker in active_workers if worker.isRunning()]
+        deadline = time.monotonic() + 13
+        while True:
+            still_running = [
+                worker for worker in active_workers if worker.isRunning()
+            ]
             if not still_running:
                 event.accept()
                 return
+            remaining_ms = int((deadline - time.monotonic()) * 1000)
+            if remaining_ms <= 0:
+                break
             for worker in still_running:
-                worker.wait(100)
+                worker.wait(min(100, remaining_ms))
 
-        self.notifications.notify(
-            "A background operation is still stopping. Try closing again in a moment.",
-            "warning",
+        self.statusBar().showMessage(
+            "A background operation is still stopping. Try closing again shortly.",
+            5000,
         )
         event.ignore()
 

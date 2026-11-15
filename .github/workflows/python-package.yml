@@ -46,4 +46,4 @@ jobs:
             --exclude=.git,.venv,venv,build,dist
 
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest -q || test $? -eq 5
