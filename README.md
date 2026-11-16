@@ -4,12 +4,10 @@
 
 ### A focused Python workspace for creating, discovering, and managing projects
 
-<p>
-  <img src="https://img.shields.io/badge/Python-3.14%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.14 or newer">
-  <img src="https://img.shields.io/badge/PySide6-desktop%20UI-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="PySide6">
-  <img src="https://img.shields.io/badge/uv-powered-DE5FE9?style=for-the-badge" alt="uv powered">
-  <img src="https://img.shields.io/badge/Platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
-</p>
+![Python 3.14 or newer](https://img.shields.io/badge/Python-3.14%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![PySide6](https://img.shields.io/badge/PySide6-desktop%20UI-41CD52?style=for-the-badge&logo=qt&logoColor=white)
+![uv powered](https://img.shields.io/badge/uv-powered-DE5FE9?style=for-the-badge)
+![Windows](https://img.shields.io/badge/Platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)
 
 <p>
   <a href="#quick-start">Quick start</a> ·
