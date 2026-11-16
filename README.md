@@ -11,7 +11,7 @@
 
 <p>
   <a href="#quick-start">Quick start</a> ·
-  <a href="#features">Features</a> ·
+  [Features](#features) ·
   <a href="#creating-a-project">Create a project</a> ·
   <a href="#development">Development</a>
 </p>
