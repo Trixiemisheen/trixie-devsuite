@@ -162,6 +162,24 @@ Refresh **My Projects** or **Environments** after changing these locations.
 
 Double-click a pinned or recent project on the dashboard to open its folder.
 
+## Activity log events
+
+The **Troubleshooting & Activity** page records these app events:
+
+- Opened pages: Dashboard, My Projects, Environments, Help (`Opened Help: <topic>`),
+  Troubleshooting, and Support.
+- Support browsing (`Viewed Support: <section>`).
+- Sidebar state changes (collapsed or expanded).
+- Settings saves.
+- Diagnostics lifecycle:
+  - `Starting system diagnostics`
+  - Per-check result rows (`HEALTHY/WARNING/CRITICAL: <check> — <detail>`)
+- Setup sync lifecycle:
+  - `Running uv sync in <project>`
+  - `uv sync completed successfully` or `uv sync failed with exit code <code>`
+  - Live `uv sync` output lines.
+- Project setup completion state (`Project setup completed/failed: <project>`).
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |
